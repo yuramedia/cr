@@ -171,6 +171,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let searchTimeout = null;
   let currentView = 'feed';
 
+  // Covers Cache State
+  const COVERS_CACHE_KEY = "cr_series_covers_cache";
+  let seriesCovers = {};
+
   // Constants
   const API_BASE = "https://beta-api.crunchyroll.com";
   const BASIC_AUTH = "cmpzMGx0eDBkYndrbGl3eGR6ZGY6NFY3cmYyMS1VRlhlWi01WEFkMFhfUVB3cjFndV9pMXM=";
@@ -180,6 +184,65 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   const CACHE_KEY = 'cr_episodes_cache';
   const CACHE_TIME_KEY = 'cr_episodes_cache_time';
   const LAST_SEEN_KEY = 'cr_last_seen_episode';
+
+  // Covers Cache Helpers
+  function loadCoversCache() {
+    try {
+      const cached = localStorage.getItem(COVERS_CACHE_KEY);
+      if (cached) {
+        seriesCovers = JSON.parse(cached);
+      }
+    } catch (e) {
+      console.error("Failed to load covers cache:", e);
+    }
+  }
+
+  function saveCoversCache() {
+    try {
+      localStorage.setItem(COVERS_CACHE_KEY, JSON.stringify(seriesCovers));
+    } catch (e) {
+      console.error("Failed to save covers cache:", e);
+    }
+  }
+
+  async function getSeriesPoster(seriesId, accessToken) {
+    if (seriesCovers[seriesId]) return seriesCovers[seriesId];
+
+    try {
+      const targetUrl = `${API_BASE}/content/v2/cms/series/${seriesId}`;
+      const proxyUrl = `https://proxy.cors.sh/${targetUrl}`;
+
+      const response = await fetch(proxyUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "User-Agent": USER_AGENT
+        }
+      });
+
+      if (!response.ok) return null;
+      const json = await response.json();
+      if (json.data && json.data.length > 0) {
+        const series = json.data[0];
+        if (series.images && series.images.poster_tall) {
+          const posters = series.images.poster_tall.flat();
+          if (posters.length > 0) {
+            const sorted = posters.toSorted((a, b) => b.width * b.height - a.width * a.height);
+            // Select optimal size around 240px to 480px width for fast loading
+            const optimal = sorted.find(p => p.width >= 240 && p.width <= 480) || sorted[sorted.length - 1];
+            const posterUrl = optimal.source;
+            
+            seriesCovers[seriesId] = posterUrl;
+            saveCoversCache();
+            return posterUrl;
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to fetch series poster for ${seriesId}:`, e);
+    }
+    return null;
+  }
 
   // DOM Elements (declared globally, initialized inside initApp)
   let headerFiltersBtn: HTMLElement | null = null;
@@ -239,6 +302,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     await fetchLanguages();
 
     setupEventListeners();
+    loadCoversCache();
     loadCachedData();
     setupInfiniteScroll();
     
@@ -819,8 +883,8 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       if (!seriesGroups[ep.seriesTitle]) {
         seriesGroups[ep.seriesTitle] = {
           seriesTitle: ep.seriesTitle,
+          seriesId: ep.seriesId,
           thumbnail: ep.thumbnail,
-          posterTall: ep.posterTall,
           description: ep.description,
           episodes: []
         };
@@ -841,9 +905,24 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       topSection.className = 'flex gap-3 items-start';
 
       const img = document.createElement('img');
-      img.src = group.posterTall || group.thumbnail || '/placeholder.jpg';
       img.className = 'w-16 sm:w-20 aspect-[2/3] object-cover rounded shrink-0 bg-[#0b0b0d]';
       img.loading = 'lazy';
+
+      // Load cover from cache or fallback to thumbnail, then fetch in background
+      const cachedPoster = seriesCovers[group.seriesId];
+      if (cachedPoster) {
+        img.src = cachedPoster;
+      } else {
+        img.src = group.thumbnail || '/placeholder.jpg';
+        if (currentAccessToken && group.seriesId && group.seriesId !== 'Unknown') {
+          getSeriesPoster(group.seriesId, currentAccessToken).then(posterUrl => {
+            if (posterUrl) {
+              img.src = posterUrl;
+            }
+          });
+        }
+      }
+
       topSection.appendChild(img);
 
       const textInfo = document.createElement('div');
