@@ -173,7 +173,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let currentView = 'feed';
 
   // Covers Cache State
-  const COVERS_CACHE_KEY = "cr_series_covers_cache";
+  const COVERS_CACHE_KEY = "cr_series_covers_cache_v3";
   let seriesCovers = {};
 
   // Constants
@@ -307,8 +307,14 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     loadCachedData();
     setupInfiniteScroll();
     
-    // Always do a background refresh on start
-    refreshData(false);
+    // Only trigger a background refresh on start if cache is older than 1 minute
+    const cacheTime = localStorage.getItem(CACHE_TIME_KEY);
+    const now = Date.now();
+    const CACHE_LIFETIME = 1 * 60 * 1000; // 1 minute in ms
+
+    if (!cacheTime || (now - parseInt(cacheTime, 10)) > CACHE_LIFETIME) {
+      refreshData(false);
+    }
   }
 
   // Setup dynamic scroll listener using IntersectionObserver
@@ -635,14 +641,15 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       duration = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
     }
 
-    // Best thumbnail resolution
+    // Best thumbnail resolution (optimal size around 600px width for fast loading)
     let thumbnail = "";
     if (ep.images && ep.images.thumbnail) {
       const thumbs = ep.images.thumbnail.flat();
       if (thumbs.length > 0) {
         // Sort descending by resolution size
         const sorted = thumbs.toSorted((a, b) => b.width * b.height - a.width * a.height);
-        thumbnail = sorted[0].source;
+        const optimal = sorted.find(p => p.width >= 480 && p.width <= 800) || sorted[0];
+        thumbnail = optimal.source;
       }
     }
 
