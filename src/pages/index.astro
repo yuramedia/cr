@@ -899,43 +899,41 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
     Object.values(seriesGroups).forEach((group: any) => {
       const card = document.createElement('article');
-      card.className = 'bg-bg-card border border-white/5 rounded-xl overflow-hidden flex flex-col p-4 gap-4';
+      card.className = 'bg-bg-card border border-white/5 rounded-xl overflow-hidden flex flex-col p-4 gap-4 relative';
+
+      // Blurred episode thumbnail backdrop
+      if (group.thumbnail) {
+        const bgGlow = document.createElement('div');
+        bgGlow.className = 'absolute inset-0 z-0 opacity-[0.16] blur-3xl scale-110 pointer-events-none select-none overflow-hidden';
+        const bgImg = document.createElement('img');
+        bgImg.src = group.thumbnail;
+        bgImg.className = 'w-full h-full object-cover';
+        bgGlow.appendChild(bgImg);
+        card.appendChild(bgGlow);
+      }
 
       const topSection = document.createElement('div');
-      topSection.className = 'flex gap-3 items-start';
+      topSection.className = 'flex gap-3 items-start relative z-10';
 
-      const imgWrapper = document.createElement('div');
-      imgWrapper.className = 'relative w-16 sm:w-20 aspect-[2/3] shrink-0';
-
-      const glowImg = document.createElement('img');
-      glowImg.className = 'absolute inset-0 w-full h-full object-cover rounded-md blur-xl opacity-60 scale-110 select-none pointer-events-none transition-all duration-500';
-      glowImg.loading = 'lazy';
-
-      const mainImg = document.createElement('img');
-      mainImg.className = 'relative z-10 w-full h-full object-cover rounded-md border border-white/10 transition-all duration-300';
-      mainImg.loading = 'lazy';
+      const img = document.createElement('img');
+      img.className = 'w-16 sm:w-20 aspect-[2/3] object-cover rounded-md shrink-0 bg-[#0b0b0d] border border-white/10 shadow-md';
+      img.loading = 'lazy';
 
       // Load cover from cache or fallback to thumbnail, then fetch in background
       const cachedPoster = seriesCovers[group.seriesId];
       if (cachedPoster) {
-        mainImg.src = cachedPoster;
-        glowImg.src = cachedPoster;
+        img.src = cachedPoster;
       } else {
-        mainImg.src = group.thumbnail || '/placeholder.jpg';
-        glowImg.src = group.thumbnail || '/placeholder.jpg';
+        img.src = group.thumbnail || '/placeholder.jpg';
         if (currentAccessToken && group.seriesId && group.seriesId !== 'Unknown') {
           getSeriesPoster(group.seriesId, currentAccessToken).then(posterUrl => {
             if (posterUrl) {
-              mainImg.src = posterUrl;
-              glowImg.src = posterUrl;
+              img.src = posterUrl;
             }
           });
         }
       }
-
-      imgWrapper.appendChild(glowImg);
-      imgWrapper.appendChild(mainImg);
-      topSection.appendChild(imgWrapper);
+      topSection.appendChild(img);
 
       const textInfo = document.createElement('div');
       textInfo.className = 'min-w-0';
@@ -954,7 +952,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       card.appendChild(topSection);
 
       const epList = document.createElement('div');
-      epList.className = 'flex flex-col gap-2 border-t border-white/5 pt-3';
+      epList.className = 'flex flex-col gap-2 border-t border-white/5 pt-3 relative z-10';
 
       group.episodes.forEach(ep => {
         const epRow = document.createElement('div');
