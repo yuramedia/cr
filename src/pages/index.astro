@@ -172,14 +172,31 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let searchTimeout = null;
   let currentView = 'feed';
 
+  // Filter memoization
+  let filterCacheKey = '';
+  let filteredCache = null;
+
+  // Render tracking for incremental updates
+  let lastRenderedView = '';
+  let lastRenderedFilterKey = '';
+  const renderedEpisodeIds = new Set();
+
   // Covers Cache State
   const COVERS_CACHE_KEY = "cr_series_covers_cache_v3";
   let seriesCovers = {};
+
+  // Poster fetch queue (dedupe + concurrency limit)
+  const posterInflight = new Map();
+  const posterQueue = [];
+  let posterActiveCount = 0;
+  const POSTER_CONCURRENCY = 4;
 
   // Constants
   const API_BASE = "https://beta-api.crunchyroll.com";
   const BASIC_AUTH = "cmpzMGx0eDBkYndrbGl3eGR6ZGY6NFY3cmYyMS1VRlhlWi01WEFkMFhfUVB3cjFndV9pMXM=";
   const USER_AGENT = "Crunchyroll/ANDROIDTV/3.65.0_22347 (Android 12; en-US; SHIELD Android TV Build/SR1A.211012.001)";
+  const MAX_CACHED_EPISODES = 300;
+  const PLACEHOLDER_IMG = '';
   
   // Storage Keys
   const CACHE_KEY = 'cr_episodes_cache';
@@ -200,49 +217,133 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
   function saveCoversCache() {
     try {
+      const entries = Object.entries(seriesCovers);
+      if (entries.length > 500) {
+        seriesCovers = Object.fromEntries(entries.slice(-400));
+      }
       localStorage.setItem(COVERS_CACHE_KEY, JSON.stringify(seriesCovers));
     } catch (e) {
       console.error("Failed to save covers cache:", e);
     }
   }
 
-  async function getSeriesPoster(seriesId, accessToken) {
-    if (seriesCovers[seriesId]) return seriesCovers[seriesId];
+  function invalidateFilterCache() {
+    filterCacheKey = '';
+    filteredCache = null;
+  }
 
+  function normalizeStr(str) {
+    return str
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function episodePassesFilter(ep) {
+    if (currentFilters.search) {
+      const queryTerms = currentFilters.search.split(/\s+/).filter(t => t.length > 0);
+      if (queryTerms.length > 0) {
+        const normalizedTitle = normalizeStr(ep.title);
+        const normalizedSeries = normalizeStr(ep.seriesTitle);
+        const matchesAll = queryTerms.every(term => {
+          const normTerm = normalizeStr(term);
+          return normalizedTitle.includes(normTerm) || normalizedSeries.includes(normTerm);
+        });
+        if (!matchesAll) return false;
+      }
+    }
+
+    if (currentFilters.audio !== 'all' && ep.audioLocale !== currentFilters.audio) {
+      return false;
+    }
+
+    if (currentFilters.sub !== 'all') {
+      const subUpper = currentFilters.sub.toUpperCase();
+      const hasSub = ep.subtitles.some(sub => sub.toUpperCase().includes(subUpper));
+      if (!hasSub) return false;
+    }
+
+    return true;
+  }
+
+  function getFilteredEpisodes() {
+    const key = `${currentFilters.search}|${currentFilters.audio}|${currentFilters.sub}`;
+    if (key === filterCacheKey && filteredCache) return filteredCache;
+
+    filteredCache = allEpisodes.filter(episodePassesFilter);
+    filterCacheKey = key;
+    return filteredCache;
+  }
+
+  function saveEpisodesCache() {
     try {
-      const targetUrl = `${API_BASE}/content/v2/cms/series/${seriesId}`;
-      const proxyUrl = `https://proxy.cors.sh/${targetUrl}`;
+      const toStore = allEpisodes.slice(0, MAX_CACHED_EPISODES);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(toStore));
+      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    } catch (e) {
+      console.error("Failed to save episodes cache:", e);
+    }
+  }
 
-      const response = await fetch(proxyUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "User-Agent": USER_AGENT
-        }
-      });
+  async function fetchSeriesPoster(seriesId, accessToken) {
+    const targetUrl = `${API_BASE}/content/v2/cms/series/${seriesId}`;
+    const proxyUrl = `https://proxy.cors.sh/${targetUrl}`;
 
-      if (!response.ok) return null;
-      const json = await response.json();
-      if (json.data && json.data.length > 0) {
-        const series = json.data[0];
-        if (series.images && series.images.poster_tall) {
-          const posters = series.images.poster_tall.flat();
-          if (posters.length > 0) {
-            const sorted = posters.toSorted((a, b) => b.width * b.height - a.width * a.height);
-            // Select optimal size around 240px to 480px width for fast loading
-            const optimal = sorted.find(p => p.width >= 240 && p.width <= 480) || sorted[sorted.length - 1];
-            const posterUrl = optimal.source;
-            
-            seriesCovers[seriesId] = posterUrl;
-            saveCoversCache();
-            return posterUrl;
-          }
+    const response = await fetch(proxyUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": USER_AGENT
+      }
+    });
+
+    if (!response.ok) return null;
+    const json = await response.json();
+    if (json.data && json.data.length > 0) {
+      const series = json.data[0];
+      if (series.images && series.images.poster_tall) {
+        const posters = series.images.poster_tall.flat();
+        if (posters.length > 0) {
+          const sorted = posters.toSorted((a, b) => b.width * b.height - a.width * a.height);
+          const optimal = sorted.find(p => p.width >= 240 && p.width <= 480) || sorted[sorted.length - 1];
+          const posterUrl = optimal.source;
+
+          seriesCovers[seriesId] = posterUrl;
+          saveCoversCache();
+          return posterUrl;
         }
       }
-    } catch (e) {
-      console.error(`Failed to fetch series poster for ${seriesId}:`, e);
     }
     return null;
+  }
+
+  function processPosterQueue() {
+    while (posterActiveCount < POSTER_CONCURRENCY && posterQueue.length > 0) {
+      const job = posterQueue.shift();
+      posterActiveCount++;
+
+      fetchSeriesPoster(job.seriesId, job.accessToken)
+        .then(job.resolve)
+        .catch(() => job.resolve(null))
+        .finally(() => {
+          posterActiveCount--;
+          posterInflight.delete(job.seriesId);
+          processPosterQueue();
+        });
+    }
+  }
+
+  async function getSeriesPoster(seriesId, accessToken) {
+    if (seriesCovers[seriesId]) return seriesCovers[seriesId];
+    if (posterInflight.has(seriesId)) return posterInflight.get(seriesId);
+
+    const promise = new Promise((resolve) => {
+      posterQueue.push({ seriesId, accessToken, resolve });
+      processPosterQueue();
+    });
+
+    posterInflight.set(seriesId, promise);
+    return promise;
   }
 
   // DOM Elements (declared globally, initialized inside initApp)
@@ -303,6 +404,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     await fetchLanguages();
 
     setupEventListeners();
+    setupFeedDelegation();
     loadCoversCache();
     loadCachedData();
     setupInfiniteScroll();
@@ -367,6 +469,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         if (searchTimeout) clearTimeout(searchTimeout);
         searchTimeout = setTimeout(() => {
           currentFilters.search = val.toLowerCase().trim();
+          invalidateFilterCache();
           renderFeed();
         }, 150);
       });
@@ -377,6 +480,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         searchInput.value = '';
         currentFilters.search = '';
         searchClearBtn.style.display = 'none';
+        invalidateFilterCache();
         renderFeed();
       });
     }
@@ -391,6 +495,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     if (audioFilter) {
       audioFilter.addEventListener('change', (e: any) => {
         currentFilters.audio = e.target.value;
+        invalidateFilterCache();
         renderFeed();
       });
     }
@@ -398,6 +503,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     if (subFilter) {
       subFilter.addEventListener('change', (e: any) => {
         currentFilters.sub = e.target.value;
+        invalidateFilterCache();
         renderFeed();
       });
     }
@@ -410,8 +516,42 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         if (searchClearBtn) searchClearBtn.style.display = 'none';
         
         currentFilters = { search: '', audio: 'all', sub: 'all' };
+        invalidateFilterCache();
         renderFeed();
       });
+    }
+  }
+
+  function setupFeedDelegation() {
+    if (!episodesContainer) return;
+
+    episodesContainer.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+
+      const copyBtn = target.closest('.id-box') as HTMLElement | null;
+      if (copyBtn && copyBtn.textContent) {
+        e.stopPropagation();
+        copyToClipboard(copyBtn.textContent.trim());
+        return;
+      }
+
+      const watchLink = target.closest('[data-watch-id]') as HTMLElement | null;
+      if (watchLink) {
+        const episodeId = watchLink.getAttribute('data-watch-id');
+        if (episodeId) handleWatchedToggle(episodeId);
+      }
+    });
+  }
+
+  function setImageSrc(img, src) {
+    if (src) {
+      img.src = src;
+      img.classList.remove('img-placeholder');
+    } else if (PLACEHOLDER_IMG) {
+      img.src = PLACEHOLDER_IMG;
+    } else {
+      img.removeAttribute('src');
+      img.classList.add('img-placeholder');
     }
   }
 
@@ -479,10 +619,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       const formatted = episodes.map(ep => formatEpisode(ep));
 
       allEpisodes = formatted;
-      localStorage.setItem(CACHE_KEY, JSON.stringify(formatted));
+      invalidateFilterCache();
+      saveEpisodesCache();
       
       const now = Date.now();
-      localStorage.setItem(CACHE_TIME_KEY, now.toString());
       updateTimestamp(new Date(now));
 
       hasMore = episodes.length >= 60;
@@ -533,13 +673,15 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
       const formatted = episodes.map(ep => formatEpisode(ep));
       allEpisodes = [...allEpisodes, ...formatted];
+      invalidateFilterCache();
+      saveEpisodesCache();
 
       hasMore = episodes.length >= 60;
       if (!hasMore && sentinel) {
         sentinel.classList.add('hidden');
       }
 
-      renderFeed();
+      renderFeed({ appendOnly: true, newEpisodes: formatted });
     } catch (err) {
       console.error("Failed to load older episodes:", err);
       showToast("Failed to load older episodes.");
@@ -653,14 +795,14 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       }
     }
 
-    // Best poster_tall resolution (vertical anime cover)
+    // Best poster_tall resolution (used in series view to avoid extra API calls)
     let posterTall = "";
     if (ep.images && ep.images.poster_tall) {
       const posters = ep.images.poster_tall.flat();
       if (posters.length > 0) {
-        // Sort descending by resolution size
         const sorted = posters.toSorted((a, b) => b.width * b.height - a.width * a.height);
-        posterTall = sorted[0].source;
+        const optimal = sorted.find(p => p.width >= 240 && p.width <= 480) || sorted[sorted.length - 1];
+        posterTall = optimal.source;
       }
     }
 
@@ -688,64 +830,47 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   }
 
   // Render Card Feed
-  function renderFeed() {
+  function renderFeed(options = {}) {
     if (!episodesContainer) return;
 
-    // Filter Episodes
-    const filtered = allEpisodes.filter(ep => {
-      // 1. Text Search (debounced, accent-normalized, multi-word matching)
-      if (currentFilters.search) {
-        const queryTerms = currentFilters.search.split(/\s+/).filter(t => t.length > 0);
-        
-        if (queryTerms.length > 0) {
-          const normalizeStr = (str) => {
-            return str
-              .toLowerCase()
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "");
-          };
+    const filtered = getFilteredEpisodes();
+    const filterKey = filterCacheKey;
 
-          const normalizedTitle = normalizeStr(ep.title);
-          const normalizedSeries = normalizeStr(ep.seriesTitle);
-
-          const matchesAll = queryTerms.every(term => {
-            const normTerm = normalizeStr(term);
-            return normalizedTitle.includes(normTerm) || normalizedSeries.includes(normTerm);
-          });
-
-          if (!matchesAll) return false;
+    if (options.appendOnly && filterKey === lastRenderedFilterKey && currentView === lastRenderedView) {
+      const newEpisodes = (options.newEpisodes || []).filter(episodePassesFilter);
+      if (newEpisodes.length > 0) {
+        if (currentView === 'feed') {
+          appendFeedCards(newEpisodes);
+        } else if (currentView === 'compact') {
+          appendCompactRows(newEpisodes);
+        } else {
+          renderFullFeed(filtered);
         }
+        return;
       }
+    }
 
-      // 2. Audio Filter
-      if (currentFilters.audio !== 'all') {
-        if (ep.audioLocale !== currentFilters.audio) return false;
-      }
+    renderFullFeed(filtered);
+  }
 
-      // 3. Subtitle Filter
-      if (currentFilters.sub !== 'all') {
-        const hasSub = ep.subtitles.some(sub => {
-          return sub.toUpperCase().includes(currentFilters.sub.toUpperCase());
-        });
-        if (!hasSub) return false;
-      }
-
-      return true;
-    });
-
+  function renderFullFeed(filtered) {
     // Handle Empty State
     if (filtered.length === 0) {
       emptyState.classList.remove('hidden');
       episodesContainer.classList.add('hidden');
       if (sentinel) sentinel.classList.add('hidden');
+      renderedEpisodeIds.clear();
       return;
-    } else {
-      emptyState.classList.add('hidden');
-      episodesContainer.classList.remove('hidden');
-      if (hasMore && sentinel) sentinel.classList.remove('hidden');
     }
 
-    // Branch rendering by view mode
+    emptyState.classList.add('hidden');
+    episodesContainer.classList.remove('hidden');
+    if (hasMore && sentinel) sentinel.classList.remove('hidden');
+
+    renderedEpisodeIds.clear();
+    lastRenderedView = currentView;
+    lastRenderedFilterKey = filterCacheKey;
+
     if (currentView === 'feed') {
       renderFeedCard(filtered);
     } else if (currentView === 'compact') {
@@ -757,30 +882,95 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     }
   }
 
+  function getDateGroupKey(releasedAt) {
+    const date = new Date(releasedAt);
+    return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
+  }
+
+  function findOrCreateDateSection(dateStr) {
+    const sections = episodesContainer.querySelectorAll('.feed-section');
+    for (const section of sections) {
+      if (section.getAttribute('data-date') === dateStr) {
+        return section.querySelector('.feed-grid');
+      }
+    }
+
+    const groupSection = document.createElement('section');
+    groupSection.className = 'feed-section flex flex-col gap-6';
+    groupSection.setAttribute('data-date', dateStr);
+
+    const headerWrapper = document.createElement('div');
+    headerWrapper.className = 'flex items-center justify-center w-full relative my-4';
+
+    const line = document.createElement('div');
+    line.className = 'absolute left-0 right-0 h-px bg-white/5 z-0';
+    headerWrapper.appendChild(line);
+
+    const header = document.createElement('div');
+    header.className = 'bg-bg-primary text-accent-orange text-xs font-extrabold tracking-widest px-6 py-1.5 border border-white/5 rounded-full z-10 uppercase';
+    header.textContent = dateStr;
+    headerWrapper.appendChild(header);
+    groupSection.appendChild(headerWrapper);
+
+    const grid = document.createElement('div');
+    grid.className = 'feed-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4';
+    groupSection.appendChild(grid);
+    episodesContainer.appendChild(groupSection);
+
+    return grid;
+  }
+
+  function appendFeedCards(newEpisodes) {
+    const watchedId = localStorage.getItem(LAST_SEEN_KEY);
+
+    newEpisodes.forEach(ep => {
+      if (renderedEpisodeIds.has(ep.id)) return;
+      renderedEpisodeIds.add(ep.id);
+
+      const dateStr = getDateGroupKey(ep.releasedAt);
+      const grid = findOrCreateDateSection(dateStr);
+      const cardNode = createEpisodeCardNode(ep, watchedId);
+      grid.appendChild(cardNode);
+    });
+  }
+
+  function appendCompactRows(newEpisodes) {
+    let listWrapper = episodesContainer.querySelector('.compact-list') as HTMLElement | null;
+    if (!listWrapper) {
+      listWrapper = document.createElement('div');
+      listWrapper.className = 'compact-list flex flex-col gap-3 w-full';
+      episodesContainer.appendChild(listWrapper);
+    }
+
+    const watchedId = localStorage.getItem(LAST_SEEN_KEY);
+    const fragment = document.createDocumentFragment();
+
+    newEpisodes.forEach(ep => {
+      if (renderedEpisodeIds.has(ep.id)) return;
+      renderedEpisodeIds.add(ep.id);
+      fragment.appendChild(createCompactRow(ep, watchedId));
+    });
+
+    listWrapper.appendChild(fragment);
+  }
+
   // 1. View Mode: Card Feed
   function renderFeedCard(filtered) {
-    // Group by Date
     const groups = {};
     filtered.forEach(ep => {
-      const date = new Date(ep.releasedAt);
-      const dateStr = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
-      
-      if (!groups[dateStr]) {
-        groups[dateStr] = [];
-      }
+      const dateStr = getDateGroupKey(ep.releasedAt);
+      if (!groups[dateStr]) groups[dateStr] = [];
       groups[dateStr].push(ep);
     });
 
-    // Clear Container
     episodesContainer.innerHTML = '';
-
-    // Get Active Watched Episode ID
     const watchedId = localStorage.getItem(LAST_SEEN_KEY);
+    const fragment = document.createDocumentFragment();
 
-    // Build DOM
     Object.keys(groups).forEach(dateStr => {
       const groupSection = document.createElement('section');
-      groupSection.className = 'flex flex-col gap-6';
+      groupSection.className = 'feed-section flex flex-col gap-6';
+      groupSection.setAttribute('data-date', dateStr);
 
       const headerWrapper = document.createElement('div');
       headerWrapper.className = 'flex items-center justify-center w-full relative my-4';
@@ -796,89 +986,96 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       groupSection.appendChild(headerWrapper);
 
       const grid = document.createElement('div');
-      grid.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4';
+      grid.className = 'feed-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4';
 
       groups[dateStr].forEach(ep => {
-        const cardNode = createEpisodeCardNode(ep, watchedId);
-        grid.appendChild(cardNode);
+        renderedEpisodeIds.add(ep.id);
+        grid.appendChild(createEpisodeCardNode(ep, watchedId));
       });
 
       groupSection.appendChild(grid);
-      episodesContainer.appendChild(groupSection);
+      fragment.appendChild(groupSection);
     });
+
+    episodesContainer.appendChild(fragment);
   }
 
   // 2. View Mode: Compact List
+  function createCompactRow(ep, watchedId) {
+    const row = document.createElement('div');
+    row.className = 'compact-row flex items-center gap-4 bg-bg-card border border-white/5 p-3 rounded-lg hover:border-white/10 transition-colors duration-200';
+    row.setAttribute('data-episode-id', ep.id);
+
+    const img = document.createElement('img');
+    setImageSrc(img, ep.thumbnail);
+    img.className = 'w-16 sm:w-20 aspect-video object-cover rounded shrink-0 bg-[#0b0b0d]';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    row.appendChild(img);
+
+    const textBlock = document.createElement('div');
+    textBlock.className = 'flex-grow min-w-0';
+
+    const seriesTitle = document.createElement('div');
+    seriesTitle.className = 'text-accent-orange text-[0.65rem] font-bold uppercase truncate';
+    seriesTitle.textContent = ep.seriesTitle;
+    textBlock.appendChild(seriesTitle);
+
+    const epTitle = document.createElement('div');
+    epTitle.className = 'text-white text-xs sm:text-sm font-semibold truncate';
+    epTitle.textContent = ep.title;
+    textBlock.appendChild(epTitle);
+
+    const metaStr = document.createElement('div');
+    metaStr.className = 'text-text-muted text-[0.7rem] mt-0.5 uppercase';
+    const date = new Date(ep.releasedAt);
+    const timeStr = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + `, ` + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    metaStr.textContent = `EPISODE ${ep.episodeNumber} • ${timeStr}`;
+    textBlock.appendChild(metaStr);
+
+    row.appendChild(textBlock);
+
+    const rightBlock = document.createElement('div');
+    rightBlock.className = 'flex flex-col sm:flex-row items-end sm:items-center gap-2 shrink-0';
+
+    const audioLabel = ep.audioLocale ? (LANG_MAP[ep.audioLocale] || ep.audioLocale) : '-';
+    const audioBadge = document.createElement('div');
+    audioBadge.className = 'text-[0.65rem] text-text-secondary bg-[#1c1c24] px-1.5 py-0.5 rounded border border-white/5 font-semibold uppercase';
+    audioBadge.textContent = audioLabel;
+    rightBlock.appendChild(audioBadge);
+
+    const watchLink = document.createElement('a');
+    watchLink.href = `https://www.crunchyroll.com/watch/${ep.id}`;
+    watchLink.target = '_blank';
+    watchLink.rel = 'noopener noreferrer';
+    watchLink.className = 'bg-accent-orange hover:bg-accent-orange-hover text-white text-[0.7rem] font-bold px-3 py-1.5 rounded-lg transition-colors duration-200 uppercase';
+    watchLink.textContent = 'Watch';
+    watchLink.setAttribute('data-watch-id', ep.id);
+    rightBlock.appendChild(watchLink);
+    row.appendChild(rightBlock);
+
+    if (watchedId === ep.id) {
+      row.classList.add('border-accent-blue/30', 'bg-accent-blue/3');
+    }
+
+    return row;
+  }
+
   function renderFeedCompact(filtered) {
     episodesContainer.innerHTML = '';
-    
+
     const listWrapper = document.createElement('div');
-    listWrapper.className = 'flex flex-col gap-3 w-full';
+    listWrapper.className = 'compact-list flex flex-col gap-3 w-full';
 
     const watchedId = localStorage.getItem(LAST_SEEN_KEY);
+    const fragment = document.createDocumentFragment();
 
     filtered.forEach(ep => {
-      const row = document.createElement('div');
-      row.className = 'flex items-center gap-4 bg-bg-card border border-white/5 p-3 rounded-lg hover:border-white/10 transition-colors duration-200';
-
-      const img = document.createElement('img');
-      img.src = ep.thumbnail || '/placeholder.jpg';
-      img.className = 'w-16 sm:w-20 aspect-video object-cover rounded shrink-0 bg-[#0b0b0d]';
-      img.loading = 'lazy';
-      row.appendChild(img);
-
-      const textBlock = document.createElement('div');
-      textBlock.className = 'flex-grow min-w-0';
-
-      const seriesTitle = document.createElement('div');
-      seriesTitle.className = 'text-accent-orange text-[0.65rem] font-bold uppercase truncate';
-      seriesTitle.textContent = ep.seriesTitle;
-      textBlock.appendChild(seriesTitle);
-
-      const epTitle = document.createElement('div');
-      epTitle.className = 'text-white text-xs sm:text-sm font-semibold truncate';
-      epTitle.textContent = ep.title;
-      textBlock.appendChild(epTitle);
-
-      const metaStr = document.createElement('div');
-      metaStr.className = 'text-text-muted text-[0.7rem] mt-0.5 uppercase';
-      const date = new Date(ep.releasedAt);
-      const timeStr = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + `, ` + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-      metaStr.textContent = `EPISODE ${ep.episodeNumber} • ${timeStr}`;
-      textBlock.appendChild(metaStr);
-
-      row.appendChild(textBlock);
-
-      const rightBlock = document.createElement('div');
-      rightBlock.className = 'flex flex-col sm:flex-row items-end sm:items-center gap-2 shrink-0';
-
-      const audioLabel = ep.audioLocale ? (LANG_MAP[ep.audioLocale] || ep.audioLocale) : '-';
-      const audioBadge = document.createElement('div');
-      audioBadge.className = 'text-[0.65rem] text-text-secondary bg-[#1c1c24] px-1.5 py-0.5 rounded border border-white/5 font-semibold uppercase';
-      audioBadge.textContent = audioLabel;
-      rightBlock.appendChild(audioBadge);
-
-      const watchLink = document.createElement('a');
-      watchLink.href = `https://www.crunchyroll.com/watch/${ep.id}`;
-      watchLink.target = '_blank';
-      watchLink.rel = 'noopener noreferrer';
-      watchLink.className = 'bg-accent-orange hover:bg-accent-orange-hover text-white text-[0.7rem] font-bold px-3 py-1.5 rounded-lg transition-colors duration-200 uppercase';
-      watchLink.textContent = 'Watch';
-      
-      watchLink.addEventListener('click', () => {
-        handleWatchedToggle(ep.id);
-      });
-
-      rightBlock.appendChild(watchLink);
-      row.appendChild(rightBlock);
-      
-      if (watchedId === ep.id) {
-        row.classList.add('border-accent-blue/30', 'bg-accent-blue/3');
-      }
-
-      listWrapper.appendChild(row);
+      renderedEpisodeIds.add(ep.id);
+      fragment.appendChild(createCompactRow(ep, watchedId));
     });
 
+    listWrapper.appendChild(fragment);
     episodesContainer.appendChild(listWrapper);
   }
 
@@ -893,6 +1090,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
           seriesTitle: ep.seriesTitle,
           seriesId: ep.seriesId,
           thumbnail: ep.thumbnail,
+          posterTall: ep.posterTall,
           description: ep.description,
           episodes: []
         };
@@ -907,7 +1105,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
     Object.values(seriesGroups).forEach((group: any) => {
       const card = document.createElement('article');
-      card.className = 'bg-bg-card border border-white/5 rounded-xl overflow-hidden flex flex-col p-4 gap-4 relative';
+      card.className = 'series-card bg-bg-card border border-white/5 rounded-xl overflow-hidden flex flex-col p-4 gap-4 relative';
 
       // Blurred episode thumbnail backdrop
       if (group.thumbnail) {
@@ -926,18 +1124,19 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       const img = document.createElement('img');
       img.className = 'w-16 sm:w-20 aspect-[2/3] object-cover rounded-md shrink-0 bg-[#0b0b0d] border border-white/10 shadow-md';
       img.loading = 'lazy';
+      img.decoding = 'async';
 
-      // Load cover from cache or fallback to thumbnail, then fetch in background
       const cachedPoster = seriesCovers[group.seriesId];
+      const inlinePoster = group.posterTall;
       if (cachedPoster) {
-        img.src = cachedPoster;
+        setImageSrc(img, cachedPoster);
+      } else if (inlinePoster) {
+        setImageSrc(img, inlinePoster);
       } else {
-        img.src = group.thumbnail || '/placeholder.jpg';
+        setImageSrc(img, group.thumbnail);
         if (currentAccessToken && group.seriesId && group.seriesId !== 'Unknown') {
           getSeriesPoster(group.seriesId, currentAccessToken).then(posterUrl => {
-            if (posterUrl) {
-              img.src = posterUrl;
-            }
+            if (posterUrl) setImageSrc(img, posterUrl);
           });
         }
       }
@@ -988,10 +1187,8 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         watchBtn.rel = 'noopener noreferrer';
         watchBtn.className = 'text-accent-orange hover:text-accent-orange-hover font-bold text-xs uppercase transition-colors duration-200 shrink-0';
         watchBtn.textContent = 'Watch';
-        
-        watchBtn.addEventListener('click', () => {
-          handleWatchedToggle(ep.id);
-        });
+        watchBtn.setAttribute('data-watch-id', ep.id);
+        epRow.setAttribute('data-episode-id', ep.id);
 
         epRow.appendChild(watchBtn);
 
@@ -1032,7 +1229,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
     Object.keys(scheduleGroups).forEach(day => {
       const col = document.createElement('div');
-      col.className = 'flex flex-col gap-3 bg-bg-card border border-white/5 p-3.5 rounded-xl min-h-[150px] w-full';
+      col.className = 'schedule-col flex flex-col gap-3 bg-bg-card border border-white/5 p-3.5 rounded-xl min-h-[150px] w-full';
 
       const header = document.createElement('h3');
       header.className = 'text-accent-orange text-[0.75rem] font-extrabold tracking-widest text-center border-b border-white/5 pb-2 uppercase';
@@ -1077,9 +1274,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
             const thumbWrapper = document.createElement('div');
             thumbWrapper.className = 'w-full aspect-video rounded overflow-hidden bg-[#131317] shrink-0 mb-0.5';
             const img = document.createElement('img');
-            img.src = show.thumbnail;
+            setImageSrc(img, show.thumbnail);
             img.className = 'w-full h-full object-cover';
             img.loading = 'lazy';
+            img.decoding = 'async';
             thumbWrapper.appendChild(img);
             item.appendChild(thumbWrapper);
           }
@@ -1105,11 +1303,9 @@ import EpisodeCard from '../components/EpisodeCard.astro';
             badge.rel = 'noopener noreferrer';
             badge.className = 'text-[0.55rem] font-bold bg-white/5 border border-white/10 px-1 py-0.2 rounded hover:bg-accent-orange/10 hover:border-accent-orange/30 text-text-secondary hover:text-accent-orange transition-colors';
             badge.textContent = shortLang;
+            badge.setAttribute('data-watch-id', ep.id);
+            item.setAttribute('data-episode-id', ep.id);
             
-            badge.addEventListener('click', () => {
-              handleWatchedToggle(ep.id);
-            });
-
             if (watchedId === ep.id) {
               badge.className = 'text-[0.55rem] font-bold bg-accent-blue/10 border border-accent-blue/30 px-1 py-0.2 rounded text-accent-blue';
               item.classList.add('border-accent-blue/30', 'bg-accent-blue/3');
@@ -1134,10 +1330,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   function createEpisodeCardNode(ep, watchedId) {
     const clone = cardTemplate.content.cloneNode(true) as DocumentFragment;
     const card = clone.querySelector('.episode-card') as HTMLElement;
+    card.setAttribute('data-episode-id', ep.id);
     
-    // Image and badge
     const img = card.querySelector('.card-image') as HTMLImageElement;
-    img.src = ep.thumbnail || '/placeholder.jpg';
+    setImageSrc(img, ep.thumbnail);
     img.alt = ep.seriesTitle;
 
     const badge = card.querySelector('.episode-badge') as HTMLElement;
@@ -1145,7 +1341,6 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       badge.textContent = `EPISODE ${ep.episodeNumber}`;
     }
 
-    // Titles and description
     card.querySelector('.series-title').textContent = ep.seriesTitle;
     
     const epTitle = card.querySelector('.episode-title') as HTMLElement;
@@ -1156,19 +1351,16 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     desc.textContent = ep.description;
     desc.title = ep.description;
 
-    // Metadata details
     const date = new Date(ep.releasedAt);
     const dateFormatted = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) + `, ` + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     card.querySelector('.val-release').textContent = dateFormatted;
 
-    // Audio Locale badge
     const audioLabel = ep.audioLocale ? (LANG_MAP[ep.audioLocale] || ep.audioLocale) : '-';
     const audioSpan = document.createElement('span');
     audioSpan.className = 'bg-accent-orange/12 border border-accent-orange/20 text-accent-orange px-1.5 py-0.5 rounded font-bold text-[0.725rem]';
     audioSpan.textContent = audioLabel;
     card.querySelector('.val-audio').appendChild(audioSpan);
 
-    // Subtitles locales list
     const subsContainer = card.querySelector('.val-subs') as HTMLElement;
     if (ep.subtitles && ep.subtitles.length > 0) {
       ep.subtitles.forEach(sub => {
@@ -1181,14 +1373,13 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       subsContainer.textContent = '-';
     }
 
-    // IDs copy buttons
-    setupCopyBtn(card.querySelector('.val-series-id'), ep.seriesId);
-    setupCopyBtn(card.querySelector('.val-season-id'), ep.seasonId);
-    setupCopyBtn(card.querySelector('.val-episode-id'), ep.episodeId);
+    card.querySelector('.val-series-id').textContent = ep.seriesId;
+    card.querySelector('.val-season-id').textContent = ep.seasonId;
+    card.querySelector('.val-episode-id').textContent = ep.episodeId;
 
-    // Watched State
     const actionBtn = card.querySelector('.seen-action-btn') as HTMLAnchorElement;
     actionBtn.href = `https://www.crunchyroll.com/watch/${ep.id}`;
+    actionBtn.setAttribute('data-watch-id', ep.id);
     
     if (watchedId === ep.id) {
       card.classList.add('watched');
@@ -1197,20 +1388,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       actionBtn.textContent = 'Watch Episode';
     }
 
-    // Seen Action handler
-    actionBtn.addEventListener('click', () => {
-      handleWatchedToggle(ep.id);
-    });
-
     return card;
-  }
-
-  function setupCopyBtn(btn, val) {
-    btn.textContent = val;
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      copyToClipboard(val);
-    });
   }
 
   // Copy Clipboard Helper
@@ -1255,14 +1433,49 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     const currentWatched = localStorage.getItem(LAST_SEEN_KEY);
     
     if (currentWatched === episodeId) {
-      // Unmark if clicked currently watched
       localStorage.removeItem(LAST_SEEN_KEY);
+      updateWatchedState(currentWatched, null);
     } else {
-      // Set new watched episode
       localStorage.setItem(LAST_SEEN_KEY, episodeId);
+      updateWatchedState(currentWatched, episodeId);
+    }
+  }
+
+  function updateWatchedState(oldId, newId) {
+    if (oldId) {
+      document.querySelectorAll(`[data-episode-id="${oldId}"]`).forEach(el => {
+        el.classList.remove('watched', 'border-accent-blue/30', 'bg-accent-blue/3', 'bg-accent-blue/5', 'shadow-[0_0_15px_rgba(0,132,255,0.1)]');
+        const btn = el.querySelector('.seen-action-btn') as HTMLElement | null;
+        if (btn) btn.textContent = 'Watch Episode';
+      });
+      document.querySelectorAll(`[data-watch-id="${oldId}"]`).forEach(el => {
+        if (!el.classList.contains('seen-action-btn')) {
+          el.className = 'text-[0.55rem] font-bold bg-white/5 border border-white/10 px-1 py-0.2 rounded hover:bg-accent-orange/10 hover:border-accent-orange/30 text-text-secondary hover:text-accent-orange transition-colors';
+        }
+      });
     }
 
-    // Rerender to apply watched visual updates
-    renderFeed();
+    if (newId) {
+      document.querySelectorAll(`[data-episode-id="${newId}"]`).forEach(el => {
+        if (el.classList.contains('episode-card')) {
+          el.classList.add('watched');
+          const btn = el.querySelector('.seen-action-btn') as HTMLElement | null;
+          if (btn) btn.textContent = 'Watch Episode (Last Seen)';
+        } else if (el.classList.contains('compact-row')) {
+          el.classList.add('border-accent-blue/30', 'bg-accent-blue/3');
+        } else {
+          el.classList.add('border-accent-blue/30', 'bg-accent-blue/5');
+          const card = el.closest('.series-card');
+          if (card) card.classList.add('border-accent-blue/30', 'shadow-[0_0_15px_rgba(0,132,255,0.1)]');
+        }
+      });
+      document.querySelectorAll(`[data-watch-id="${newId}"]`).forEach(el => {
+        if (!el.classList.contains('seen-action-btn')) {
+          el.className = 'text-[0.55rem] font-bold bg-accent-blue/10 border border-accent-blue/30 px-1 py-0.2 rounded text-accent-blue';
+          const item = el.closest('[data-episode-id]');
+          if (item) item.classList.add('border-accent-blue/30', 'bg-accent-blue/3');
+        }
+      });
+    }
   }
 </script>
