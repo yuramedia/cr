@@ -171,6 +171,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let isLoadingMore = false;
   let searchTimeout = null;
   let currentView = 'feed';
+  let pollingInterval = null;
 
   // Filter memoization
   let filterCacheKey = '';
@@ -370,6 +371,18 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let sentinel: HTMLElement | null = null;
   let viewSelector: HTMLSelectElement | null = null;
 
+  // Auto-polling helpers
+  function startAutoPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+
+    pollingInterval = setInterval(async () => {
+      if (document.visibilityState === 'visible' && !isRefreshing && !isLoadingMore) {
+        console.log("Auto-polling triggered background refresh...");
+        await refreshData(false);
+      }
+    }, 60 * 1000); // 1 minute in ms
+  }
+
   // Initialization
   document.addEventListener('DOMContentLoaded', () => {
     initApp();
@@ -417,6 +430,26 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     if (!cacheTime || (now - parseInt(cacheTime, 10)) > CACHE_LIFETIME) {
       refreshData(false);
     }
+
+    // Start auto polling (1 minute interval) when tab is active
+    startAutoPolling();
+
+    // Pause/Resume polling on visibility changes to save CPU/battery
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        const cacheTime = localStorage.getItem(CACHE_TIME_KEY);
+        const now = Date.now();
+        if (!cacheTime || (now - parseInt(cacheTime, 10)) > CACHE_LIFETIME) {
+          refreshData(false);
+        }
+        startAutoPolling();
+      } else {
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+        }
+      }
+    });
   }
 
   // Setup dynamic scroll listener using IntersectionObserver
