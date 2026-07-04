@@ -581,6 +581,17 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       }
     }
 
+    // Best poster_tall resolution (vertical anime cover)
+    let posterTall = "";
+    if (ep.images && ep.images.poster_tall) {
+      const posters = ep.images.poster_tall.flat();
+      if (posters.length > 0) {
+        // Sort descending by resolution size
+        const sorted = posters.toSorted((a, b) => b.width * b.height - a.width * a.height);
+        posterTall = sorted[0].source;
+      }
+    }
+
     // Extract publisher ID deleted
 
     // Release date
@@ -592,6 +603,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       seriesTitle,
       description: ep.description || "No description available.",
       thumbnail,
+      posterTall,
       episodeNumber: meta.episode || String(meta.episode_number || '--'),
       duration,
       audioLocale,
@@ -808,6 +820,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         seriesGroups[ep.seriesTitle] = {
           seriesTitle: ep.seriesTitle,
           thumbnail: ep.thumbnail,
+          posterTall: ep.posterTall,
           description: ep.description,
           episodes: []
         };
@@ -828,8 +841,8 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       topSection.className = 'flex gap-3 items-start';
 
       const img = document.createElement('img');
-      img.src = group.thumbnail || '/placeholder.jpg';
-      img.className = 'w-24 sm:w-28 aspect-video object-cover rounded shrink-0 bg-[#0b0b0d]';
+      img.src = group.posterTall || group.thumbnail || '/placeholder.jpg';
+      img.className = 'w-16 sm:w-20 aspect-[2/3] object-cover rounded shrink-0 bg-[#0b0b0d]';
       img.loading = 'lazy';
       topSection.appendChild(img);
 
