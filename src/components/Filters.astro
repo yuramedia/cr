@@ -1,0 +1,46 @@
+---
+// Filters.astro
+---
+<div id="filters-panel" class="bg-bg-card border-b border-border-card transition-all duration-300 hidden">
+  <div class="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_auto] gap-4 md:gap-6 items-end max-w-[1400px] mx-auto px-4 sm:px-6 md:px-8 py-4 md:py-6">
+    <div class="flex flex-col gap-2">
+      <label for="search-input" class="text-text-secondary text-[0.75rem] font-bold uppercase tracking-wider">Search Series</label>
+      <div class="relative w-full">
+        <input 
+          type="text" 
+          id="search-input" 
+          placeholder="e.g. Mushoku Tensei, Black Torch..." 
+          class="bg-[#1c1c24] border border-white/5 text-text-primary rounded-lg text-sm px-4 py-2.5 w-full outline-none transition-all duration-200 focus:border-accent-orange focus:ring-2 focus:ring-accent-orange/15"
+        />
+        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted text-lg cursor-pointer hidden hover:text-text-primary transition-colors duration-200" id="search-clear-btn">&times;</span>
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-2">
+      <label for="audio-filter" class="text-text-secondary text-[0.75rem] font-bold uppercase tracking-wider">Audio Language</label>
+      <select id="audio-filter" class="bg-[#1c1c24] border border-white/5 text-text-primary rounded-lg text-sm px-4 py-2.5 w-full outline-none transition-all duration-200 focus:border-accent-orange focus:ring-2 focus:ring-accent-orange/15">
+        <option value="all">All Audio</option>
+        <option value="ja-JP">Japanese (JA-JP)</option>
+        <option value="en-US">English (EN-US)</option>
+        <option value="es-LA">Spanish (ES-LA)</option>
+        <option value="pt-BR">Portuguese (PT-BR)</option>
+      </select>
+    </div>
+
+    <div class="flex flex-col gap-2">
+      <label for="sub-filter" class="text-text-secondary text-[0.75rem] font-bold uppercase tracking-wider">Subtitle Language</label>
+      <select id="sub-filter" class="bg-[#1c1c24] border border-white/5 text-text-primary rounded-lg text-sm px-4 py-2.5 w-full outline-none transition-all duration-200 focus:border-accent-orange focus:ring-2 focus:ring-accent-orange/15">
+        <option value="all">All Subtitles</option>
+        <option value="EN">English</option>
+        <option value="ID">Indonesian</option>
+        <option value="JA">Japanese</option>
+        <option value="AR">Arabic</option>
+        <option value="ES">Spanish</option>
+      </select>
+    </div>
+
+    <div class="flex flex-col gap-2">
+      <button id="reset-filters-btn" class="bg-transparent border border-dashed border-white/10 text-text-secondary rounded-lg text-sm font-semibold cursor-pointer px-5 py-2.5 transition-all duration-200 hover:border-accent-orange hover:text-text-primary hover:bg-accent-orange/5">Reset Filters</button>
+    </div>
+  </div>
+</div>
