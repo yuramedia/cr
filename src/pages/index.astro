@@ -904,26 +904,38 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       const topSection = document.createElement('div');
       topSection.className = 'flex gap-3 items-start';
 
-      const img = document.createElement('img');
-      img.className = 'w-16 sm:w-20 aspect-[2/3] object-cover rounded shrink-0 bg-[#0b0b0d]';
-      img.loading = 'lazy';
+      const imgWrapper = document.createElement('div');
+      imgWrapper.className = 'relative w-16 sm:w-20 aspect-[2/3] shrink-0';
+
+      const glowImg = document.createElement('img');
+      glowImg.className = 'absolute inset-0 w-full h-full object-cover rounded-md blur-xl opacity-60 scale-110 select-none pointer-events-none transition-all duration-500';
+      glowImg.loading = 'lazy';
+
+      const mainImg = document.createElement('img');
+      mainImg.className = 'relative z-10 w-full h-full object-cover rounded-md border border-white/10 transition-all duration-300';
+      mainImg.loading = 'lazy';
 
       // Load cover from cache or fallback to thumbnail, then fetch in background
       const cachedPoster = seriesCovers[group.seriesId];
       if (cachedPoster) {
-        img.src = cachedPoster;
+        mainImg.src = cachedPoster;
+        glowImg.src = cachedPoster;
       } else {
-        img.src = group.thumbnail || '/placeholder.jpg';
+        mainImg.src = group.thumbnail || '/placeholder.jpg';
+        glowImg.src = group.thumbnail || '/placeholder.jpg';
         if (currentAccessToken && group.seriesId && group.seriesId !== 'Unknown') {
           getSeriesPoster(group.seriesId, currentAccessToken).then(posterUrl => {
             if (posterUrl) {
-              img.src = posterUrl;
+              mainImg.src = posterUrl;
+              glowImg.src = posterUrl;
             }
           });
         }
       }
 
-      topSection.appendChild(img);
+      imgWrapper.appendChild(glowImg);
+      imgWrapper.appendChild(mainImg);
+      topSection.appendChild(imgWrapper);
 
       const textInfo = document.createElement('div');
       textInfo.className = 'min-w-0';
