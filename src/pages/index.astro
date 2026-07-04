@@ -90,12 +90,12 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   // Fetch dynamic timed text & audio languages from static.crunchyroll.com
   async function fetchLanguages() {
     try {
-      const timedTextUrl = "https://static.crunchyroll.com/config/i18n/v3/timed_text_languages.json";
-      const audioUrl = "https://static.crunchyroll.com/config/i18n/v3/audio_languages.json";
+      const timedTextUrl = "https://proxy.cors.sh/https://static.crunchyroll.com/config/i18n/v3/timed_text_languages.json";
+      const audioUrl = "https://proxy.cors.sh/https://static.crunchyroll.com/config/i18n/v3/audio_languages.json";
 
       const [timedTextRes, audioRes] = await Promise.all([
-        fetch(timedTextUrl).then(res => (res.ok ? res.json() : null)),
-        fetch(audioUrl).then(res => (res.ok ? res.json() : null))
+        fetch(timedTextUrl).then(res => (res.ok ? res.json() : null)).catch(() => null),
+        fetch(audioUrl).then(res => (res.ok ? res.json() : null)).catch(() => null)
       ]);
 
       const merged = { ...LANG_MAP };
@@ -112,9 +112,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       }
 
       LANG_MAP = merged;
-      populateFilterOptions();
     } catch (err) {
       console.warn("Failed to fetch static languages configs:", err);
+    } finally {
+      populateFilterOptions();
     }
   }
 
@@ -904,7 +905,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       // Blurred episode thumbnail backdrop
       if (group.thumbnail) {
         const bgGlow = document.createElement('div');
-        bgGlow.className = 'absolute inset-0 z-0 opacity-[0.16] blur-3xl scale-110 pointer-events-none select-none overflow-hidden';
+        bgGlow.className = 'absolute inset-0 z-0 opacity-[0.15] pointer-events-none select-none overflow-hidden';
         const bgImg = document.createElement('img');
         bgImg.src = group.thumbnail;
         bgImg.className = 'w-full h-full object-cover';
