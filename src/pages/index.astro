@@ -1726,12 +1726,14 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       });
 
       const notesVal = row[20];
-      const notesHtml = notesVal && notesVal.trim()
-        ? `<div class="bg-accent-orange/10 border border-accent-orange/20 rounded-xl p-4 mt-6 text-sm text-text-primary">
-            <span class="font-bold text-accent-orange uppercase tracking-wider block mb-1">Editor Notes</span>
-            <p class="leading-relaxed font-sans">${notesVal}</p>
-           </div>`
-        : '';
+      const notesHtml = `
+        <div class="bg-white/2 border border-white/5 rounded-xl p-4 mt-6 text-sm">
+          <span class="font-bold text-accent-orange uppercase tracking-wider block mb-1 text-[0.675rem]">Editor Notes</span>
+          <p class="leading-relaxed font-sans ${notesVal && notesVal.trim() ? 'text-text-primary' : 'text-text-muted italic'}">
+            ${notesVal && notesVal.trim() ? notesVal : 'No editor notes available for this episode.'}
+          </p>
+        </div>
+      `;
 
       pipelineHtml = `
         <div class="mt-8 bg-bg-card border border-white/5 rounded-2xl p-6">
