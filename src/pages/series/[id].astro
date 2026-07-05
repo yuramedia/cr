@@ -1,0 +1,85 @@
+---
+// src/pages/series/[id].astro
+import Layout from '../../layouts/Layout.astro';
+import { getAccessToken, fetchCrunchyrollEpisodes } from '../../scripts/api';
+
+export async function getStaticPaths() {
+  const token = await getAccessToken();
+  if (!token) return [];
+
+  // Fetch recent releases (first 60 episodes)
+  const episodes = await fetchCrunchyrollEpisodes(token, 0) || [];
+  
+  // Collect unique series IDs
+  const seriesIds = Array.from(new Set(episodes.map(ep => ep.episode_metadata?.series_id).filter(Boolean)));
+  
+  const paths = [];
+  for (const seriesId of seriesIds) {
+    try {
+      const res = await fetch(`https://beta-api.crunchyroll.com/content/v2/cms/series/${seriesId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const series = data.data?.[0];
+        if (series) {
+          // Select poster image (wide first, then tall)
+          let thumbUrl = '';
+          const wideImages = series.images?.poster_wide?.[0];
+          const tallImages = series.images?.poster_tall?.[0];
+          
+          if (wideImages && wideImages.length > 0) {
+            // Find optimal size around 800w to 1200w
+            let best = wideImages[0];
+            for (const img of wideImages) {
+              if (img.width >= 800 && img.width <= 1400) {
+                best = img;
+                break;
+              }
+            }
+            thumbUrl = best.source;
+          } else if (tallImages && tallImages.length > 0) {
+            let best = tallImages[0];
+            for (const img of tallImages) {
+              if (img.width >= 480 && img.width <= 800) {
+                best = img;
+                break;
+              }
+            }
+            thumbUrl = best.source;
+          }
+          
+          paths.push({
+            params: { id: seriesId },
+            props: {
+              title: `${series.title} - Crunchyroll Tracker`,
+              description: series.description || `Browse seasons and track typesetting formatting statuses for ${series.title} on Crunchyroll Tracker.`,
+              image: thumbUrl,
+              url: `https://cr.yuramedia.com/series/${seriesId}`
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to fetch series details for ${seriesId}:`, e);
+    }
+  }
+  
+  return paths;
+}
+
+const { id } = Astro.params;
+const { title, description, image, url } = Astro.props;
+---
+
+<Layout title={title} description={description} image={image} url={url}>
+  <div class="flex flex-col items-center justify-center min-h-screen bg-[#0b0b0d] text-white p-6">
+    <div class="border-3 border-white/5 border-t-[#ff6200] rounded-full w-12 h-12 animate-spin mb-6"></div>
+    <p class="text-[#a0a0ab] text-lg font-medium">Redirecting to series detail page...</p>
+  </div>
+
+  <script is:inline define:vars={{ id }}>
+    // Immediate client-side redirect to the SPA hash route
+    window.location.replace('/#/series/' + id);
+  </script>
+</Layout>

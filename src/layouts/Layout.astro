@@ -3,9 +3,17 @@ import '../styles/global.css';
 
 interface Props {
 	title?: string;
+	description?: string;
+	image?: string;
+	url?: string;
 }
 
-const { title = "Crunchyroll Tracker" } = Astro.props;
+const { 
+	title = "Crunchyroll Tracker",
+	description = "Track real-time Crunchyroll episode releases, view weekly broadcast schedules, filter audio/subtitles, and manage your watch history with a sleek, compact interface.",
+	image = "https://cr.yuramedia.com/favicon.svg",
+	url = "https://cr.yuramedia.com/"
+} = Astro.props;
 ---
 <!doctype html>
 <html lang="en">
@@ -23,28 +31,28 @@ const { title = "Crunchyroll Tracker" } = Astro.props;
 		<title>{title}</title>
 
 		<!-- SEO Embed Metadata -->
-		<meta name="description" content="Track real-time Crunchyroll episode releases, view weekly broadcast schedules, filter audio/subtitles, and manage your watch history with a sleek, compact interface." />
+		<meta name="description" content={description} />
 		<meta name="theme-color" content="#ff6200" />
 		<meta name="robots" content="index, follow" />
 
 		<!-- Open Graph / Facebook / Discord Embeds -->
 		<meta property="og:type" content="website" />
-		<meta property="og:title" content="Crunchyroll Tracker - Real-time Releases & Schedule" />
-		<meta property="og:description" content="Track real-time Crunchyroll episode releases, view weekly broadcast schedules, filter audio/subtitles, and manage your watch history with a sleek, compact interface." />
-		<meta property="og:url" content="https://cr.yuramedia.com/" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={url} />
 		<meta property="og:site_name" content="Crunchyroll Tracker" />
-		<meta property="og:image" content="https://cr.yuramedia.com/favicon.svg" />
+		<meta property="og:image" content={image} />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
 
 		<!-- Twitter Card Embeds -->
-		<meta name="twitter:card" content="summary" />
-		<meta name="twitter:title" content="Crunchyroll Tracker - Real-time Releases & Schedule" />
-		<meta name="twitter:description" content="Track real-time Crunchyroll episode releases, view weekly broadcast schedules, filter audio/subtitles, and manage your watch history with a sleek, compact interface." />
-		<meta name="twitter:image" content="https://cr.yuramedia.com/favicon.svg" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content={title} />
+		<meta name="twitter:description" content={description} />
+		<meta name="twitter:image" content={image} />
 
 		<!-- JSON-LD Structured Data for Search Engine Embedding -->
-		<script type="application/ld+json">
+		<script type="application/ld+json" is:inline>
 			{
 				"@context": "https://schema.org",
 				"@type": "WebApplication",
