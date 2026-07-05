@@ -209,16 +209,69 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       .replace(/[\u0300-\u036f]/g, "");
   }
 
+  function levenshteinDistance(a, b) {
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1, // substitution
+            matrix[i][j - 1] + 1,     // insertion
+            matrix[i - 1][j] + 1      // deletion
+          );
+        }
+      }
+    }
+    return matrix[b.length][a.length];
+  }
+
+  function isFuzzyMatch(term, targetWords) {
+    const normTerm = normalizeStr(term);
+    
+    // Direct substring check (fast path)
+    if (targetWords.some(w => w.includes(normTerm))) return true;
+    
+    // Typo tolerance for longer query terms
+    const termLen = normTerm.length;
+    if (termLen < 4) return false;
+    
+    const maxDist = termLen >= 7 ? 2 : 1;
+    
+    return targetWords.some(w => {
+      if (Math.abs(w.length - termLen) > maxDist) return false;
+      return levenshteinDistance(normTerm, w) <= maxDist;
+    });
+  }
+
   function episodePassesFilter(ep) {
     if (currentFilters.search) {
       const queryTerms = currentFilters.search.split(/\s+/).filter(t => t.length > 0);
       if (queryTerms.length > 0) {
-        const normalizedTitle = normalizeStr(ep.title);
-        const normalizedSeries = normalizeStr(ep.seriesTitle);
-        const matchesAll = queryTerms.every(term => {
-          const normTerm = normalizeStr(term);
-          return normalizedTitle.includes(normTerm) || normalizedSeries.includes(normTerm);
-        });
+        const subLangs = ep.subtitles.map(s => activeLangMap[s] || s).join(' ');
+        const audioLang = ep.audioLocale ? (activeLangMap[ep.audioLocale] || ep.audioLocale) : '';
+        const isDub = ep.audioLocale && ep.audioLocale !== 'ja-JP' ? 'dub' : '';
+        const isSub = ep.subtitles && ep.subtitles.length > 0 ? 'sub' : '';
+        
+        const rawSearchText = [
+          ep.title || '',
+          ep.seriesTitle || '',
+          `episode ${ep.episodeNumber || ''}`,
+          `ep ${ep.episodeNumber || ''}`,
+          subLangs,
+          audioLang,
+          isDub,
+          isSub
+        ].join(' ');
+        
+        const targetWords = normalizeStr(rawSearchText)
+          .split(/[^a-z0-9]+/i)
+          .filter(w => w.length > 0);
+
+        const matchesAll = queryTerms.every(term => isFuzzyMatch(term, targetWords));
         if (!matchesAll) return false;
       }
     }
