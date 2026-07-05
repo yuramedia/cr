@@ -2057,8 +2057,18 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   async function fetchSubtitleDownloadUrls(episodeId: string, token: string, subtitles: string[]) {
     try {
       const playUrl = getProxyUrl(`https://beta-api.crunchyroll.com/playback/v2/${episodeId}/web/chrome/play`);
+      
+      const useProxy = localStorage.getItem("cr_use_cors_proxy") !== "false";
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`
+      };
+      if (useProxy) {
+        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+        headers["x-cors-grants"] = '{"x-cors-button": "allowed"}';
+      }
+
       const playRes = await fetch(playUrl, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: headers
       });
       if (playRes.ok) {
         const playData = await playRes.json();
