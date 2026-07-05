@@ -2049,6 +2049,64 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         handleWatchedToggle(ep.id);
       });
     }
+
+    // Dynamic Subtitle Download Upgrades
+    fetchSubtitleDownloadUrls(episodeId, token, ep.subtitles);
+  }
+
+  async function fetchSubtitleDownloadUrls(episodeId: string, token: string, subtitles: string[]) {
+    try {
+      const playUrl = getProxyUrl(`https://beta-api.crunchyroll.com/playback/v2/${episodeId}/web/chrome/play`);
+      const playRes = await fetch(playUrl, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (playRes.ok) {
+        const playData = await playRes.json();
+        
+        let playSubs = [];
+        if (playData && playData.subtitles) {
+          if (Array.isArray(playData.subtitles)) {
+            playSubs = playData.subtitles;
+          } else if (typeof playData.subtitles === 'object') {
+            playSubs = Object.entries(playData.subtitles).map(([key, val]) => ({
+              locale: key,
+              url: (val as any).url || '',
+              format: (val as any).format || ''
+            }));
+          }
+        }
+        
+        const subContainer = document.querySelector('#detail-content .flex.flex-wrap.gap-1\\.5');
+        if (subContainer) {
+          subContainer.innerHTML = '';
+          
+          subtitles.forEach(sub => {
+            const cleanSub = activeLangMap[sub] || sub;
+            const matched = playSubs.find(ps => {
+              const playLocale = (ps.locale || ps.language || '').toLowerCase();
+              return playLocale === sub.toLowerCase() || playLocale.startsWith(sub.toLowerCase().substring(0, 2));
+            });
+            
+            if (matched && matched.url) {
+              const badgeLink = document.createElement('a');
+              badgeLink.href = matched.url;
+              badgeLink.target = '_blank';
+              badgeLink.className = 'bg-accent-orange/10 border border-accent-orange/20 text-accent-orange hover:bg-accent-orange/20 hover:text-white px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 select-none';
+              badgeLink.innerHTML = `${cleanSub} <span class="text-[0.65rem]">📥</span>`;
+              badgeLink.title = `Download Subtitle (${matched.format || 'ASS/VTT'})`;
+              subContainer.appendChild(badgeLink);
+            } else {
+              const badge = document.createElement('span');
+              badge.className = 'bg-white/5 border border-white/10 text-text-primary px-2.5 py-1 rounded text-xs font-semibold';
+              badge.textContent = cleanSub;
+              subContainer.appendChild(badge);
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch subtitle download links:", err);
+    }
   }
 
   // Render Series Detail Page
