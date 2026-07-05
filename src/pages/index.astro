@@ -1640,7 +1640,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
     const subsContainer = card.querySelector('.val-subs') as HTMLElement;
     if (ep.subtitles && ep.subtitles.length > 0) {
-      const limit = 12;
+      const limit = 3;
       const showCollapse = ep.subtitles.length > limit;
 
       ep.subtitles.forEach((sub, idx) => {
