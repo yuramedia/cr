@@ -735,37 +735,48 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       const formatted = episodes.map(ep => formatEpisode(ep));
 
       // Check if there are new episodes compared to our loaded feed
-      const hasNewContent = allEpisodes.length > 0 && formatted.length > 0 && formatted[0].id !== allEpisodes[0].id;
+      const hasNewContent = allEpisodes.length === 0 || (formatted.length > 0 && formatted[0].id !== allEpisodes[0].id);
 
-      if (hasNewContent && !isManual && window.scrollY >= 100) {
-        // User is scrolled down and new episodes were found in auto-polling:
-        // Cache them in pendingEpisodes and notify the user (do not rewrite DOM)
-        pendingEpisodes = formatted;
-        showNewEpisodesToast();
-      } else {
-        // Normal update: Overwrite and render immediately
-        allEpisodes = formatted;
-        invalidateFilterCache();
-        saveEpisodesCache();
-        
-        const now = Date.now();
-        updateTimestamp(new Date(now));
+      if (hasNewContent) {
+        if (!isManual && window.scrollY >= 100) {
+          // User is scrolled down and new episodes were found in auto-polling:
+          // Cache them in pendingEpisodes and notify the user (do not rewrite DOM)
+          pendingEpisodes = formatted;
+          showNewEpisodesToast();
+        } else {
+          // Normal update: Overwrite and render immediately
+          allEpisodes = formatted;
+          invalidateFilterCache();
+          saveEpisodesCache();
+          
+          const now = Date.now();
+          updateTimestamp(new Date(now));
 
-        hasMore = episodes.length >= 60;
-        if (hasMore && sentinel) {
-          sentinel.classList.remove('hidden');
-        } else if (sentinel) {
-          sentinel.classList.add('hidden');
+          hasMore = episodes.length >= 60;
+          if (hasMore && sentinel) {
+            sentinel.classList.remove('hidden');
+          } else if (sentinel) {
+            sentinel.classList.add('hidden');
+          }
+
+          errorState.classList.add('hidden');
+          loadingState.classList.add('hidden');
+          
+          // Hide notification toast
+          hideNewEpisodesToast();
+          pendingEpisodes = null;
+          
+          renderFeed();
         }
+      } else {
+        // NO NEW CONTENT: Just update cache timestamp to prevent polling again immediately, 
+        // and update the update timestamp text, but do NOT call renderFeed() (avoids scroll jumps!)
+        const now = Date.now();
+        localStorage.setItem(CACHE_TIME_KEY, now.toString());
+        updateTimestamp(new Date(now));
 
         errorState.classList.add('hidden');
         loadingState.classList.add('hidden');
-        
-        // Hide notification toast
-        hideNewEpisodesToast();
-        pendingEpisodes = null;
-        
-        renderFeed();
       }
     } catch (err: any) {
       console.error('Refresh API failed:', err);
