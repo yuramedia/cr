@@ -1924,10 +1924,17 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       <div class="series-detail-header bg-bg-card border border-white/5 rounded-2xl overflow-hidden shadow-2xl p-6 sm:p-8 mb-6 relative">
         <!-- Backdrop Banner -->
         <img 
+          srcset="
+            https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=cover,format=auto,quality=70,width=800/keyart/${seriesId}-backdrop_wide 800w,
+            https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=cover,format=auto,quality=80,width=1200/keyart/${seriesId}-backdrop_wide 1200w,
+            https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=cover,format=auto,quality=85,width=1920/keyart/${seriesId}-backdrop_wide 1920w,
+            https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=cover,format=auto,quality=85,width=2560/keyart/${seriesId}-backdrop_wide 2560w
+          "
+          sizes="100vw"
           src="${backdropUrl}" 
           alt="" 
           class="absolute inset-0 w-full h-full object-cover opacity-20 pointer-events-none select-none z-0" 
-          onerror="this.src='${widePoster || posterUrl}'; this.onerror=null;"
+          onerror="this.removeAttribute('srcset'); this.src='${widePoster || posterUrl}'; this.onerror=null;"
         />
         
         <div class="flex flex-col md:flex-row gap-6 relative z-10">
@@ -1935,10 +1942,16 @@ import EpisodeCard from '../components/EpisodeCard.astro';
           <div class="flex flex-col gap-3 justify-center">
             <h2 class="text-2xl sm:text-3xl font-extrabold text-text-primary leading-tight">
               <img 
+                srcset="
+                  https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=contain,format=auto,quality=75,width=320/keyart/${seriesId}-title_logo-en-us 320w,
+                  https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=contain,format=auto,quality=85,width=480/keyart/${seriesId}-title_logo-en-us 480w,
+                  https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=contain,format=auto,quality=85,width=640/keyart/${seriesId}-title_logo-en-us 640w
+                "
+                sizes="(max-width: 640px) 280px, 360px"
                 src="https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=contain,format=auto,quality=85,width=480/keyart/${seriesId}-title_logo-en-us" 
                 alt="${series.title}" 
                 class="max-w-[280px] sm:max-w-[360px] h-auto w-auto object-contain block mb-2" 
-                onerror="this.insertAdjacentHTML('afterend', decodeURIComponent('${encodeURIComponent(series.title)}')); this.remove();"
+                onerror="this.removeAttribute('srcset'); this.insertAdjacentHTML('afterend', decodeURIComponent('${encodeURIComponent(series.title)}')); this.remove();"
               />
             </h2>
             <p class="text-text-secondary text-sm max-w-4xl leading-relaxed font-sans">${series.description || 'No description available.'}</p>
