@@ -90,8 +90,8 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   // Fetch dynamic timed text & audio languages from static.crunchyroll.com
   async function fetchLanguages() {
     try {
-      const timedTextUrl = "https://proxy.cors.sh/https://static.crunchyroll.com/config/i18n/v3/timed_text_languages.json";
-      const audioUrl = "https://proxy.cors.sh/https://static.crunchyroll.com/config/i18n/v3/audio_languages.json";
+      const timedTextUrl = getProxyUrl("https://static.crunchyroll.com/config/i18n/v3/timed_text_languages.json");
+      const audioUrl = getProxyUrl("https://static.crunchyroll.com/config/i18n/v3/audio_languages.json");
 
       const [timedTextRes, audioRes] = await Promise.all([
         fetch(timedTextUrl).then(res => (res.ok ? res.json() : null)).catch(() => null),
@@ -172,6 +172,13 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let searchTimeout = null;
   let currentView = 'feed';
   let pollingInterval = null;
+  let useProxyCheckbox: HTMLInputElement | null = null;
+
+  // Dynamic CORS proxy resolver
+  function getProxyUrl(url) {
+    const useProxy = localStorage.getItem('cr_use_cors_proxy') !== 'false';
+    return useProxy ? `https://proxy.cors.sh/${url}` : url;
+  }
 
   // Filter memoization
   let filterCacheKey = '';
@@ -288,7 +295,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
   async function fetchSeriesPoster(seriesId, accessToken) {
     const targetUrl = `${API_BASE}/content/v2/cms/series/${seriesId}`;
-    const proxyUrl = `https://proxy.cors.sh/${targetUrl}`;
+    const proxyUrl = getProxyUrl(targetUrl);
 
     const response = await fetch(proxyUrl, {
       method: "GET",
@@ -412,6 +419,12 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     toastText = document.getElementById('toast-text');
     sentinel = document.getElementById('infinite-scroll-sentinel');
     viewSelector = document.getElementById('view-selector') as HTMLSelectElement;
+    useProxyCheckbox = document.getElementById('use-proxy-checkbox') as HTMLInputElement;
+
+    // Load initial checkbox state
+    if (useProxyCheckbox) {
+      useProxyCheckbox.checked = localStorage.getItem('cr_use_cors_proxy') !== 'false';
+    }
 
     // Fetch dynamic languages and populate selectors
     await fetchLanguages();
@@ -551,6 +564,21 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         currentFilters = { search: '', audio: 'all', sub: 'all' };
         invalidateFilterCache();
         renderFeed();
+      });
+    }
+
+    if (useProxyCheckbox) {
+      useProxyCheckbox.addEventListener('change', (e: any) => {
+        localStorage.setItem('cr_use_cors_proxy', String(e.target.checked));
+        
+        // Clear cache and reload
+        allEpisodes = [];
+        localStorage.removeItem(CACHE_KEY);
+        localStorage.removeItem(CACHE_TIME_KEY);
+        
+        fetchLanguages().then(() => {
+          refreshData(true);
+        });
       });
     }
   }
@@ -744,7 +772,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     body.append("device_id", crypto.randomUUID());
 
     const targetUrl = `${API_BASE}/auth/v1/token`;
-    const proxyUrl = `https://proxy.cors.sh/${targetUrl}`;
+    const proxyUrl = getProxyUrl(targetUrl);
 
     const response = await fetch(proxyUrl, {
       method: "POST",
@@ -771,7 +799,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     });
 
     const targetUrl = `${API_BASE}/content/v2/discover/browse?${params}`;
-    const proxyUrl = `https://proxy.cors.sh/${targetUrl}`;
+    const proxyUrl = getProxyUrl(targetUrl);
 
     const response = await fetch(proxyUrl, {
       method: "GET",

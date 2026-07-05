@@ -42,5 +42,23 @@
     <div class="flex flex-col gap-2">
       <button id="reset-filters-btn" class="bg-transparent border border-dashed border-white/10 text-text-secondary rounded-lg text-sm font-semibold cursor-pointer px-5 py-2.5 transition-all duration-200 hover:border-accent-orange hover:text-text-primary hover:bg-accent-orange/5">Reset Filters</button>
     </div>
+
+    <!-- Advanced / Proxy Settings -->
+    <div class="col-span-full border-t border-white/5 pt-4 mt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="flex items-start sm:items-center gap-2">
+        <input 
+          type="checkbox" 
+          id="use-proxy-checkbox" 
+          class="mt-1 sm:mt-0 w-4 h-4 rounded bg-[#1c1c24] border border-white/10 text-accent-orange focus:ring-offset-0 focus:ring-1 focus:ring-accent-orange accent-accent-orange cursor-pointer"
+          checked
+        />
+        <label for="use-proxy-checkbox" class="text-text-primary text-xs font-bold uppercase tracking-wider cursor-pointer select-none">
+          Use CORS Proxy
+        </label>
+        <span class="text-text-muted text-[0.7rem] sm:ml-2">
+          (Disable this if you use a browser CORS extension to get your local country's regional catalog and faster speeds)
+        </span>
+      </div>
+    </div>
   </div>
 </div>
