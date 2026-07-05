@@ -1648,7 +1648,8 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         const subItem = document.createElement('bidi-item');
         subItem.textContent = cleanName;
         if (showCollapse && idx >= (limit - 1)) {
-          subItem.classList.add('hidden', 'extra-sub');
+          subItem.classList.add('extra-sub');
+          subItem.style.display = 'none';
         }
         subsContainer.appendChild(subItem);
       });
@@ -1659,7 +1660,9 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         moreBtn.textContent = `+${ep.subtitles.length - (limit - 1)} more`;
         moreBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          card.querySelectorAll('.extra-sub').forEach(el => el.classList.remove('hidden'));
+          card.querySelectorAll('.extra-sub').forEach(el => {
+            (el as HTMLElement).style.display = '';
+          });
           moreBtn.remove();
         });
         subsContainer.appendChild(moreBtn);
