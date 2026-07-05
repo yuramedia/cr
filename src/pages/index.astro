@@ -1043,19 +1043,32 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     img.className = 'w-16 sm:w-20 aspect-video object-cover rounded shrink-0 bg-[#0b0b0d]';
     img.loading = 'lazy';
     img.decoding = 'async';
-    row.appendChild(img);
+    
+    const imgLink = document.createElement('a');
+    imgLink.href = `#/eps/${ep.id}`;
+    imgLink.className = 'shrink-0';
+    imgLink.appendChild(img);
+    row.appendChild(imgLink);
 
     const textBlock = document.createElement('div');
     textBlock.className = 'flex-grow min-w-0';
 
     const seriesTitle = document.createElement('div');
     seriesTitle.className = 'text-accent-orange text-[0.65rem] font-bold uppercase truncate';
-    seriesTitle.textContent = ep.seriesTitle;
+    const seriesLink = document.createElement('a');
+    seriesLink.href = `#/series/${ep.seriesId}`;
+    seriesLink.className = 'hover:text-accent-orange-hover hover:underline transition-colors';
+    seriesLink.textContent = ep.seriesTitle;
+    seriesTitle.appendChild(seriesLink);
     textBlock.appendChild(seriesTitle);
 
     const epTitle = document.createElement('div');
     epTitle.className = 'text-white text-xs sm:text-sm font-semibold truncate';
-    epTitle.textContent = ep.title;
+    const epLink = document.createElement('a');
+    epLink.href = `#/eps/${ep.id}`;
+    epLink.className = 'hover:text-accent-orange-hover transition-colors';
+    epLink.textContent = ep.title;
+    epTitle.appendChild(epLink);
     textBlock.appendChild(epTitle);
 
     const metaStr = document.createElement('div');
@@ -1172,14 +1185,23 @@ import EpisodeCard from '../components/EpisodeCard.astro';
           });
         }
       }
-      topSection.appendChild(img);
+      
+      const imgLink = document.createElement('a');
+      imgLink.href = `#/series/${group.seriesId}`;
+      imgLink.className = 'shrink-0';
+      imgLink.appendChild(img);
+      topSection.appendChild(imgLink);
 
       const textInfo = document.createElement('div');
       textInfo.className = 'min-w-0';
 
       const sTitle = document.createElement('h3');
       sTitle.className = 'text-white text-sm sm:text-base font-bold truncate';
-      sTitle.textContent = group.seriesTitle;
+      const sLink = document.createElement('a');
+      sLink.href = `#/series/${group.seriesId}`;
+      sLink.className = 'hover:text-accent-orange-hover hover:underline transition-colors';
+      sLink.textContent = group.seriesTitle;
+      sTitle.appendChild(sLink);
       textInfo.appendChild(sTitle);
 
       const count = document.createElement('div');
@@ -1202,7 +1224,11 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
         const epNumStr = document.createElement('span');
         epNumStr.className = 'text-accent-orange font-bold mr-1.5';
-        epNumStr.textContent = `EP ${ep.episodeNumber}`;
+        const epLink = document.createElement('a');
+        epLink.href = `#/eps/${ep.id}`;
+        epLink.className = 'hover:text-accent-orange-hover hover:underline transition-colors';
+        epLink.textContent = `EP ${ep.episodeNumber}`;
+        epNumStr.appendChild(epLink);
         epMeta.appendChild(epNumStr);
 
         const audioCode = ep.audioLocale ? (activeLangMap[ep.audioLocale] || ep.audioLocale) : '-';
@@ -1310,7 +1336,11 @@ import EpisodeCard from '../components/EpisodeCard.astro';
             img.className = 'w-full h-full object-cover';
             img.loading = 'lazy';
             img.decoding = 'async';
-            thumbWrapper.appendChild(img);
+            
+            const thumbLink = document.createElement('a');
+            thumbLink.href = `#/series/${show.eps[0].seriesId}`;
+            thumbLink.appendChild(img);
+            thumbWrapper.appendChild(thumbLink);
             item.appendChild(thumbWrapper);
           }
 
@@ -1321,8 +1351,11 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
           const title = document.createElement('div');
           title.className = 'text-white font-semibold truncate';
-          title.textContent = show.seriesTitle;
-          title.title = show.seriesTitle;
+          const titleLink = document.createElement('a');
+          titleLink.href = `#/series/${show.eps[0].seriesId}`;
+          titleLink.className = 'hover:text-accent-orange-hover hover:underline transition-colors';
+          titleLink.textContent = show.seriesTitle;
+          title.appendChild(titleLink);
           item.appendChild(title);
 
           const audiosRow = document.createElement('div');
@@ -1330,12 +1363,9 @@ import EpisodeCard from '../components/EpisodeCard.astro';
           show.eps.forEach(ep => {
             const shortLang = ep.audioLocale ? ep.audioLocale.split('-')[0].toUpperCase() : 'RAW';
             const badge = document.createElement('a');
-            badge.href = `https://www.crunchyroll.com/watch/${ep.id}`;
-            badge.target = '_blank';
-            badge.rel = 'noopener noreferrer';
+            badge.href = `#/eps/${ep.id}`;
             badge.className = 'text-[0.55rem] font-bold bg-white/5 border border-white/10 px-1 py-0.2 rounded hover:bg-accent-orange/10 hover:border-accent-orange/30 text-text-secondary hover:text-accent-orange transition-colors';
             badge.textContent = shortLang;
-            badge.setAttribute('data-watch-id', ep.id);
             item.setAttribute('data-episode-id', ep.id);
             
             if (watchedId === ep.id) {
