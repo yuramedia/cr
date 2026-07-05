@@ -1,0 +1,30 @@
+# Crunchyroll Tracker Codebase Context
+
+An aesthetic, responsive, and performance-optimized client-side web application built with **Astro**, **TailwindCSS v4**, and **TypeScript**, hosted on GitHub Pages. It tracks the latest Crunchyroll episode releases in real-time.
+
+## Tech Stack & Configurations
+- **Framework:** Astro (Static Output mode)
+- **Styling:** TailwindCSS v4 (defined in `src/styles/global.css` with responsive container utility)
+- **Deployment:** GitHub Pages (`cr.yuramedia.com`) via `.github/workflows/deploy.yml` with `withastro/action` and Node 22 + Bun.
+- **SEO & Sitemap:** `@astrojs/sitemap` integration in `astro.config.mjs` exporting a static sitemap to `sitemap.xml`.
+
+## Architecture & API Flow
+- **CORS Handling:** Crunchyroll Beta API (`https://beta-api.crunchyroll.com`) restricts client-side access. We bypass CORS by routing HTTP requests through a dynamic resolver `getProxyUrl()`, pointing to the proxy `https://proxy.cors.sh/` by default.
+- **Regional License Bypass:** An advanced settings checkbox (`#use-proxy-checkbox`) allows users to disable the CORS proxy and make direct fetch calls using their local Indonesian/SEA IP address (requires a browser extension like "Allow CORS") to fetch region-locked content (such as Precure series).
+- **Authentication:** Acquired via anonymous token generation on `/auth/v1/token` with Client Credentials flow, cached locally in a state variable `currentAccessToken`.
+- **Feed Pagination:** Driven by IntersectionObserver monitoring `#infinite-scroll-sentinel` at the bottom of the feed container.
+
+## Key Component Structure
+- `src/pages/index.astro`: Main page containing all client-side JavaScript logic (fetching, search normalization, covers fetching, view toggle renderers, auto-polling timer).
+- `src/components/TrackerHeader.astro`: Site header displaying last update timestamp, refresh triggers, and view selectors.
+- `src/components/Filters.astro`: Input search panel, dropdown selectors for Audio/Subtitle filters, and the "Use CORS Proxy" advanced toggle.
+- `src/components/EpisodeCard.astro`: HTMLTemplateElement markup defining card layouts.
+- `src/layouts/Layout.astro`: Shell template defining HTML5 headers, sitemap links, theme-color `#ff6200`, Open Graph metadata, and WebApplication JSON-LD schemas.
+
+## Developer Rules
+- **Automatic Rendering Prevention:** Auto-refresh polling checks the first episode ID. If there are no new episodes, it updates cache timestamps but **does not** call `renderFeed()`, preventing scroll position jumps.
+- **Scroll-Safety Notification:** If new content is available while the user is scrolled down (`window.scrollY >= 100` px), a floating toast `#new-episodes-toast` is shown instead of auto-committing the DOM. Clicking it triggers a smooth scroll to top and loads the content.
+- **Optimal Image Resolutions:**
+  - Landscape thumbnails: Selected around **600px width** (between 480px and 800px).
+  - Vertical series covers: Fetched dynamically from `/cms/series/{seriesId}` and cached, selecting optimal width between **240px and 480px** for instant page load.
+- **Subtitle Filter Deduplication:** Trims country suffixes (e.g. "English (US)" -> "English") but falls back to full names if the label is `"Bahasa"` to prevent duplicates like `"Bahasa Indonesia"` and `"Bahasa Melayu"`.
