@@ -1796,7 +1796,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
               <h2 class="text-2xl sm:text-3xl font-extrabold text-text-primary leading-tight">${ep.title || 'Untitled Episode'}</h2>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
                 <span class="text-sm font-bold text-accent-orange uppercase tracking-wider">Episode ${ep.episodeNumber}</span>
-                <span class="text-xs text-text-secondary font-semibold">${new Date(ep.time).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                <span class="text-xs text-text-secondary font-semibold">${new Date(ep.releasedAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             </div>
 
@@ -1973,12 +1973,15 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         const watchedVal = localStorage.getItem(watchedKey);
         const isWatched = watchedVal !== null;
         
-        const epNum = ep.episode_metadata?.episode_number || '';
-        const seriesTitle = ep.episode_metadata?.series_title || '';
+        const epNum = ep.episode_number || ep.episode || '';
+        const seriesTitle = ep.series_title || '';
         const sheetKey = `${normalizeTitleForSheet(seriesTitle)}_${epNum}`;
         const hasFormats = sheetDataMap.has(sheetKey);
 
         const thumb = ep.images?.thumbnail?.[0]?.[2]?.source || ep.images?.thumbnail?.[0]?.[0]?.source || '';
+
+        const releaseDate = ep.premium_available_date || ep.availability_starts || ep.available_date;
+        const releaseDateStr = releaseDate ? new Date(releaseDate).toLocaleDateString() : '-';
 
         html += `
           <a href="#/eps/${ep.id}" class="flex flex-col bg-[#16161e] border border-white/5 hover:border-accent-orange/30 rounded-xl overflow-hidden transition-all duration-300 group shadow-md hover:-translate-y-0.5 select-none">
@@ -1992,7 +1995,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
                 <span class="text-[0.65rem] font-bold text-accent-orange tracking-wider uppercase">Episode ${epNum || '-'}</span>
                 <h4 class="text-sm font-extrabold text-text-primary line-clamp-1 group-hover:text-accent-orange transition-colors mt-0.5">${ep.title || 'Untitled'}</h4>
               </div>
-              <span class="text-[0.625rem] text-text-secondary font-medium">Release: ${new Date(ep.episode_metadata?.sequence_number_tnt || Date.now()).toLocaleDateString()}</span>
+              <span class="text-[0.625rem] text-text-secondary font-medium">Release: ${releaseDateStr}</span>
             </div>
           </a>
         `;
@@ -2031,12 +2034,15 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         const watchedVal = localStorage.getItem(watchedKey);
         const isWatched = watchedVal !== null;
         
-        const epNum = ep.episode_metadata?.episode_number || '';
-        const seriesTitle = ep.episode_metadata?.series_title || '';
+        const epNum = ep.episode_number || ep.episode || '';
+        const seriesTitle = ep.series_title || '';
         const sheetKey = `${normalizeTitleForSheet(seriesTitle)}_${epNum}`;
         const hasFormats = sheetDataMap.has(sheetKey);
 
         const thumb = ep.images?.thumbnail?.[0]?.[2]?.source || ep.images?.thumbnail?.[0]?.[0]?.source || '';
+
+        const releaseDate = ep.premium_available_date || ep.availability_starts || ep.available_date;
+        const releaseDateStr = releaseDate ? new Date(releaseDate).toLocaleDateString() : '-';
 
         episodesHtml += `
           <a href="#/eps/${ep.id}" class="flex flex-col bg-[#16161e] border border-white/5 hover:border-accent-orange/30 rounded-xl overflow-hidden transition-all duration-300 group shadow-md hover:-translate-y-0.5 select-none">
@@ -2050,7 +2056,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
                 <span class="text-[0.65rem] font-bold text-accent-orange tracking-wider uppercase">Episode ${epNum || '-'}</span>
                 <h4 class="text-sm font-extrabold text-text-primary line-clamp-1 group-hover:text-accent-orange transition-colors mt-0.5">${ep.title || 'Untitled'}</h4>
               </div>
-              <span class="text-[0.625rem] text-text-secondary font-medium">Release: ${new Date(ep.episode_metadata?.sequence_number_tnt || Date.now()).toLocaleDateString()}</span>
+              <span class="text-[0.625rem] text-text-secondary font-medium">Release: ${releaseDateStr}</span>
             </div>
           </a>
         `;
