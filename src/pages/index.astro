@@ -52,6 +52,14 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     <div id="copied-toast" class="copied-toast">
       <span>✓</span> <span id="toast-text">Monospace ID copied to clipboard!</span>
     </div>
+
+    <!-- New Episodes Toast Notification -->
+    <div id="new-episodes-toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-accent-orange hover:bg-accent-orange-hover text-white text-xs sm:text-sm font-bold px-5 py-3 rounded-full shadow-2xl cursor-pointer transition-all duration-300 transform -translate-y-4 opacity-0 pointer-events-none flex items-center gap-2 border border-white/10 select-none">
+      <svg class="w-4 h-4 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+      </svg>
+      <span>New releases available! Click to load</span>
+    </div>
   </div>
 </Layout>
 
@@ -377,6 +385,21 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let toastText: HTMLElement | null = null;
   let sentinel: HTMLElement | null = null;
   let viewSelector: HTMLSelectElement | null = null;
+  let newEpisodesToast: HTMLElement | null = null;
+  let pendingEpisodes = null;
+
+  // New episodes notification helpers
+  function showNewEpisodesToast() {
+    if (!newEpisodesToast) return;
+    newEpisodesToast.classList.remove('opacity-0', 'pointer-events-none', '-translate-y-4');
+    newEpisodesToast.classList.add('opacity-100', 'translate-y-0');
+  }
+
+  function hideNewEpisodesToast() {
+    if (!newEpisodesToast) return;
+    newEpisodesToast.classList.remove('opacity-100', 'translate-y-0');
+    newEpisodesToast.classList.add('opacity-0', 'pointer-events-none', '-translate-y-4');
+  }
 
   // Auto-polling helpers
   function startAutoPolling() {
@@ -420,6 +443,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     sentinel = document.getElementById('infinite-scroll-sentinel');
     viewSelector = document.getElementById('view-selector') as HTMLSelectElement;
     useProxyCheckbox = document.getElementById('use-proxy-checkbox') as HTMLInputElement;
+    newEpisodesToast = document.getElementById('new-episodes-toast');
 
     // Load initial checkbox state
     if (useProxyCheckbox) {
@@ -581,6 +605,37 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         });
       });
     }
+
+    // Toast Click to Load
+    if (newEpisodesToast) {
+      newEpisodesToast.addEventListener('click', () => {
+        if (pendingEpisodes) {
+          allEpisodes = pendingEpisodes;
+          saveEpisodesCache();
+          updateTimestamp(new Date());
+          
+          pendingEpisodes = null;
+          hideNewEpisodesToast();
+          
+          renderFeed();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      });
+    }
+
+    // Scroll Back to Top Auto Commit
+    window.addEventListener('scroll', () => {
+      if (window.scrollY < 100 && pendingEpisodes) {
+        allEpisodes = pendingEpisodes;
+        saveEpisodesCache();
+        updateTimestamp(new Date());
+        
+        pendingEpisodes = null;
+        hideNewEpisodesToast();
+        
+        renderFeed();
+      }
+    });
   }
 
   function setupFeedDelegation() {
@@ -679,23 +734,39 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
       const formatted = episodes.map(ep => formatEpisode(ep));
 
-      allEpisodes = formatted;
-      invalidateFilterCache();
-      saveEpisodesCache();
-      
-      const now = Date.now();
-      updateTimestamp(new Date(now));
+      // Check if there are new episodes compared to our loaded feed
+      const hasNewContent = allEpisodes.length > 0 && formatted.length > 0 && formatted[0].id !== allEpisodes[0].id;
 
-      hasMore = episodes.length >= 60;
-      if (hasMore && sentinel) {
-        sentinel.classList.remove('hidden');
-      } else if (sentinel) {
-        sentinel.classList.add('hidden');
+      if (hasNewContent && !isManual && window.scrollY >= 100) {
+        // User is scrolled down and new episodes were found in auto-polling:
+        // Cache them in pendingEpisodes and notify the user (do not rewrite DOM)
+        pendingEpisodes = formatted;
+        showNewEpisodesToast();
+      } else {
+        // Normal update: Overwrite and render immediately
+        allEpisodes = formatted;
+        invalidateFilterCache();
+        saveEpisodesCache();
+        
+        const now = Date.now();
+        updateTimestamp(new Date(now));
+
+        hasMore = episodes.length >= 60;
+        if (hasMore && sentinel) {
+          sentinel.classList.remove('hidden');
+        } else if (sentinel) {
+          sentinel.classList.add('hidden');
+        }
+
+        errorState.classList.add('hidden');
+        loadingState.classList.add('hidden');
+        
+        // Hide notification toast
+        hideNewEpisodesToast();
+        pendingEpisodes = null;
+        
+        renderFeed();
       }
-
-      errorState.classList.add('hidden');
-      loadingState.classList.add('hidden');
-      renderFeed();
     } catch (err: any) {
       console.error('Refresh API failed:', err);
       if (allEpisodes.length === 0) {
