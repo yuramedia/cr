@@ -119,3 +119,63 @@ export async function fetchLanguagesConfig(): Promise<{ timedText: any; audio: a
     return null;
   }
 }
+
+export async function fetchObject(id: string, accessToken: string): Promise<any | null> {
+  try {
+    const targetUrl = `${API_BASE}/content/v2/cms/objects/${id}`;
+    const proxyUrl = getProxyUrl(targetUrl);
+    const response = await fetch(proxyUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": USER_AGENT
+      }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.data?.[0] || null;
+  } catch (e) {
+    console.error(`Failed to fetch object ${id}:`, e);
+    return null;
+  }
+}
+
+export async function fetchSeriesSeasons(seriesId: string, accessToken: string): Promise<any[] | null> {
+  try {
+    const targetUrl = `${API_BASE}/content/v2/cms/series/${seriesId}/seasons`;
+    const proxyUrl = getProxyUrl(targetUrl);
+    const response = await fetch(proxyUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": USER_AGENT
+      }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.data || [];
+  } catch (e) {
+    console.error(`Failed to fetch seasons for series ${seriesId}:`, e);
+    return null;
+  }
+}
+
+export async function fetchSeasonEpisodes(seasonId: string, accessToken: string): Promise<any[] | null> {
+  try {
+    const targetUrl = `${API_BASE}/content/v2/cms/seasons/${seasonId}/episodes`;
+    const proxyUrl = getProxyUrl(targetUrl);
+    const response = await fetch(proxyUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": USER_AGENT
+      }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.data || [];
+  } catch (e) {
+    console.error(`Failed to fetch episodes for season ${seasonId}:`, e);
+    return null;
+  }
+}

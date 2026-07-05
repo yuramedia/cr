@@ -43,6 +43,28 @@ import EpisodeCard from '../components/EpisodeCard.astro';
           <span class="text-text-secondary text-[0.7rem] font-extrabold tracking-widest uppercase">Loading older releases...</span>
         </div>
       </div>
+
+      <!-- Detail Page Container -->
+      <div id="detail-container" class="mt-4 hidden">
+        <!-- Back Button -->
+        <button id="detail-back-btn" class="flex items-center gap-2 text-text-secondary hover:text-accent-orange font-bold text-[0.75rem] tracking-wider uppercase bg-bg-card border border-white/5 px-4 py-2.5 rounded-lg cursor-pointer transition-colors duration-200 mb-6 select-none">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to list
+        </button>
+
+        <!-- Detail Loader -->
+        <div id="detail-loader" class="flex flex-col items-center justify-center py-20 bg-bg-card border border-white/5 rounded-xl min-h-[400px]">
+          <div class="border-3 border-white/5 border-t-accent-orange rounded-full w-12 h-12 animate-spin mb-6"></div>
+          <p class="text-text-secondary text-base sm:text-lg font-medium">Loading details...</p>
+        </div>
+
+        <!-- Detail Content -->
+        <div id="detail-content" class="hidden">
+          <!-- Dynamically injected detail markup -->
+        </div>
+      </div>
     </main>
     
     <!-- Episode Card Template -->
@@ -65,8 +87,8 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
 <script>
   import { LANG_MAP, CACHE_LIFETIME, CACHE_TIME_KEY, CACHE_KEY, LAST_SEEN_KEY, MAX_CACHED_EPISODES } from "../scripts/constants";
-  import { getProxyUrl, getAccessToken as getAccessTokenApi, fetchCrunchyrollEpisodes, fetchSeriesPoster as fetchSeriesPosterApi, fetchLanguagesConfig } from "../scripts/api";
-  import { loadSpreadsheetData, populatePipelineForCard, updateVisibleCardsPipeline } from "../scripts/sheet";
+  import { getProxyUrl, getAccessToken as getAccessTokenApi, fetchCrunchyrollEpisodes, fetchSeriesPoster as fetchSeriesPosterApi, fetchLanguagesConfig, fetchObject, fetchSeriesSeasons, fetchSeasonEpisodes } from "../scripts/api";
+  import { loadSpreadsheetData, populatePipelineForCard, updateVisibleCardsPipeline, sheetDataMap, normalizeTitleForSheet } from "../scripts/sheet";
   import { loadEpisodesCache, saveEpisodesCache as saveEpisodesCacheToStore, loadCoversCache, saveCoversCache as saveCoversCacheToStore, clearCache } from "../scripts/cache";
 
   // Active languages configuration mapping (seeded, updated dynamically)
@@ -391,6 +413,20 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         }
       }
     });
+
+    // Routing listeners
+    window.addEventListener('hashchange', handleRoute);
+    
+    // Bind detail page back button
+    const detailBackBtn = document.getElementById('detail-back-btn');
+    if (detailBackBtn) {
+      detailBackBtn.addEventListener('click', () => {
+        window.location.hash = '#/';
+      });
+    }
+
+    // Handle initial route
+    await handleRoute();
   }
 
   // Setup dynamic scroll listener using IntersectionObserver
@@ -1034,7 +1070,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     const rightBlock = document.createElement('div');
     rightBlock.className = 'flex flex-col sm:flex-row items-end sm:items-center gap-2 shrink-0';
 
-    const audioLabel = ep.audioLocale ? (LANG_MAP[ep.audioLocale] || ep.audioLocale) : '-';
+    const audioLabel = ep.audioLocale ? (activeLangMap[ep.audioLocale] || ep.audioLocale) : '-';
     const audioBadge = document.createElement('div');
     audioBadge.className = 'text-[0.65rem] text-text-secondary bg-[#1c1c24] px-1.5 py-0.5 rounded border border-white/5 font-semibold uppercase';
     audioBadge.textContent = audioLabel;
@@ -1169,7 +1205,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         epNumStr.textContent = `EP ${ep.episodeNumber}`;
         epMeta.appendChild(epNumStr);
 
-        const audioCode = ep.audioLocale ? (LANG_MAP[ep.audioLocale] || ep.audioLocale) : '-';
+        const audioCode = ep.audioLocale ? (activeLangMap[ep.audioLocale] || ep.audioLocale) : '-';
         const audioBadge = document.createElement('span');
         audioBadge.className = 'text-white/60 font-semibold uppercase text-[0.65rem] bg-white/5 border border-white/10 px-1.5 py-0.5 rounded';
         audioBadge.textContent = audioCode;
@@ -1334,15 +1370,26 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     setImageSrc(img, ep.thumbnail);
     img.alt = ep.seriesTitle;
 
+    // Wrap the image in a link to the episode detail page
+    const imgContainer = img.parentElement as HTMLElement;
+    if (imgContainer) {
+      const link = document.createElement('a');
+      link.href = `#/eps/${ep.id}`;
+      link.className = 'block w-full h-full';
+      img.parentNode?.insertBefore(link, img);
+      link.appendChild(img);
+    }
+
     const badge = card.querySelector('.episode-badge') as HTMLElement;
     if (badge) {
       badge.textContent = `EPISODE ${ep.episodeNumber}`;
     }
 
-    card.querySelector('.series-title').textContent = ep.seriesTitle;
+    const seriesTitleEl = card.querySelector('.series-title') as HTMLElement;
+    seriesTitleEl.innerHTML = `<a href="#/series/${ep.seriesId}" class="hover:text-accent-orange-hover hover:underline transition-colors">${ep.seriesTitle}</a>`;
     
     const epTitle = card.querySelector('.episode-title') as HTMLElement;
-    epTitle.textContent = ep.title;
+    epTitle.innerHTML = `<a href="#/eps/${ep.id}" class="hover:text-accent-orange-hover transition-colors">${ep.title}</a>`;
     epTitle.title = ep.title;
 
     const desc = card.querySelector('.episode-description') as HTMLElement;
@@ -1353,7 +1400,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     const dateFormatted = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) + `, ` + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     card.querySelector('.val-release').textContent = dateFormatted;
 
-    const audioLabel = ep.audioLocale ? (LANG_MAP[ep.audioLocale] || ep.audioLocale) : '-';
+    const audioLabel = ep.audioLocale ? (activeLangMap[ep.audioLocale] || ep.audioLocale) : '-';
     const audioSpan = document.createElement('span');
     audioSpan.className = 'bg-accent-orange/12 border border-accent-orange/20 text-accent-orange px-1.5 py-0.5 rounded font-bold text-[0.725rem]';
     audioSpan.textContent = audioLabel;
@@ -1365,7 +1412,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       const showCollapse = ep.subtitles.length > limit;
 
       ep.subtitles.forEach((sub, idx) => {
-        const cleanName = LANG_MAP[sub] || sub;
+        const cleanName = activeLangMap[sub] || sub;
         const subItem = document.createElement('bidi-item');
         subItem.textContent = cleanName;
         if (showCollapse && idx >= (limit - 1)) {
@@ -1497,5 +1544,537 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         }
       });
     }
+  }
+
+  // Routing Handler
+  async function handleRoute() {
+    const hash = window.location.hash;
+    const detailContainer = document.getElementById('detail-container') as HTMLElement;
+    const detailLoader = document.getElementById('detail-loader') as HTMLElement;
+    const detailContent = document.getElementById('detail-content') as HTMLElement;
+    
+    const episodesContainer = document.getElementById('episodes-container') as HTMLElement;
+    const infiniteScrollSentinel = document.getElementById('infinite-scroll-sentinel') as HTMLElement;
+    const filtersPanel = document.getElementById('filters-panel') as HTMLElement;
+    const toggleFiltersBtn = document.getElementById('toggle-filters-btn') as HTMLElement;
+    const viewSelector = document.getElementById('view-selector') as HTMLElement;
+    const refreshApiBtn = document.getElementById('refresh-api-btn') as HTMLElement;
+    const loadingState = document.getElementById('loading-state') as HTMLElement;
+    const errorState = document.getElementById('error-state') as HTMLElement;
+    const emptyState = document.getElementById('empty-state') as HTMLElement;
+
+    if (!hash || hash === '#/' || hash === '') {
+      // Main Feed Route
+      if (detailContainer) detailContainer.classList.add('hidden');
+      if (episodesContainer) episodesContainer.classList.remove('hidden');
+      if (hasMore && sentinel) {
+        infiniteScrollSentinel.classList.remove('hidden');
+      }
+      
+      // Restore header controls
+      if (toggleFiltersBtn) toggleFiltersBtn.style.display = '';
+      if (viewSelector) viewSelector.style.display = '';
+      if (refreshApiBtn) refreshApiBtn.style.display = '';
+      
+      // Re-trigger rendering to ensure correct state
+      renderFeed();
+      return;
+    }
+
+    // Detail Page Routes
+    // Hide main feed UI elements
+    if (episodesContainer) episodesContainer.classList.add('hidden');
+    if (infiniteScrollSentinel) infiniteScrollSentinel.classList.add('hidden');
+    if (loadingState) loadingState.classList.add('hidden');
+    if (errorState) errorState.classList.add('hidden');
+    if (emptyState) emptyState.classList.add('hidden');
+    if (filtersPanel) filtersPanel.classList.add('hidden');
+    
+    // Hide header controls
+    if (toggleFiltersBtn) toggleFiltersBtn.style.display = 'none';
+    if (viewSelector) viewSelector.style.display = 'none';
+    if (refreshApiBtn) refreshApiBtn.style.display = 'none';
+
+    // Show detail panel & loader
+    if (detailContainer) detailContainer.classList.remove('hidden');
+    if (detailLoader) detailLoader.classList.remove('hidden');
+    if (detailContent) {
+      detailContent.classList.add('hidden');
+      detailContent.innerHTML = '';
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      if (detailLoader) detailLoader.classList.add('hidden');
+      if (detailContent) {
+        detailContent.classList.remove('hidden');
+        detailContent.innerHTML = `
+          <div class="text-center py-10 bg-bg-card border border-white/5 rounded-xl">
+            <p class="text-accent-red font-bold text-lg mb-2">Error</p>
+            <p class="text-text-secondary">Failed to acquire access token. Please check your connection or CORS proxy settings.</p>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Parse route
+    const seriesMatch = hash.match(/^#\/series\/([a-zA-Z0-9]+)$/);
+    const seasonMatch = hash.match(/^#\/season\/([a-zA-Z0-9]+)$/);
+    const episodeMatch = hash.match(/^#\/eps\/([a-zA-Z0-9]+)$/) || hash.match(/^#\/episode\/([a-zA-Z0-9]+)$/);
+
+    try {
+      if (seriesMatch) {
+        const seriesId = seriesMatch[1];
+        await renderSeriesDetail(seriesId, token);
+      } else if (seasonMatch) {
+        const seasonId = seasonMatch[1];
+        await renderSeasonDetail(seasonId, token);
+      } else if (episodeMatch) {
+        const episodeId = episodeMatch[1];
+        await renderEpisodeDetail(episodeId, token);
+      } else {
+        // Unknown route
+        if (detailLoader) detailLoader.classList.add('hidden');
+        if (detailContent) {
+          detailContent.classList.remove('hidden');
+          detailContent.innerHTML = `
+            <div class="text-center py-10 bg-bg-card border border-white/5 rounded-xl">
+              <p class="text-accent-red font-bold text-lg mb-2">Page Not Found</p>
+              <p class="text-text-secondary">The requested page does not exist or has moved.</p>
+            </div>
+          `;
+        }
+      }
+    } catch (e) {
+      console.error("Error rendering detail page:", e);
+      if (detailLoader) detailLoader.classList.add('hidden');
+      if (detailContent) {
+        detailContent.classList.remove('hidden');
+        detailContent.innerHTML = `
+          <div class="text-center py-10 bg-bg-card border border-white/5 rounded-xl">
+            <p class="text-accent-red font-bold text-lg mb-2">Error</p>
+            <p class="text-text-secondary">Failed to load content: ${e instanceof Error ? e.message : 'Unknown error'}</p>
+          </div>
+        `;
+      }
+    }
+  }
+
+  // Render Episode Detail Page
+  async function renderEpisodeDetail(episodeId: string, token: string) {
+    const detailLoader = document.getElementById('detail-loader') as HTMLElement;
+    const detailContent = document.getElementById('detail-content') as HTMLElement;
+
+    // 1. Try to find in allEpisodes
+    let ep = allEpisodes.find(e => e.id === episodeId);
+
+    if (!ep) {
+      // 2. Fetch if not found
+      const rawEp = await fetchObject(episodeId, token);
+      if (!rawEp) {
+        throw new Error(`Episode with ID ${episodeId} not found.`);
+      }
+      ep = formatEpisode(rawEp);
+    }
+
+    // 3. Render HTML
+    const cleanAudio = ep.audioLocale ? (activeLangMap[ep.audioLocale] || ep.audioLocale) : '-';
+    const subBadgesHtml = ep.subtitles && ep.subtitles.length > 0
+      ? ep.subtitles.map(sub => {
+          const cleanSub = activeLangMap[sub] || sub;
+          return `<span class="bg-white/5 border border-white/10 text-text-primary px-2.5 py-1 rounded text-xs font-semibold">${cleanSub}</span>`;
+        }).join('')
+      : '<span class="text-text-muted">-</span>';
+
+    // Get spreadsheet mapping for formats
+    const sheetKey = `${normalizeTitleForSheet(ep.seriesTitle)}_${ep.episodeNumber}`;
+    const row = sheetDataMap.get(sheetKey);
+    let pipelineHtml = '';
+
+    if (row) {
+      const COL_LANGS = [
+        { name: "English", code: "ENG", index: 4 },
+        { name: "Spanish (LA)", code: "SPA-LA", index: 5 },
+        { name: "Spanish (ES)", code: "SPA-ES", index: 6 },
+        { name: "Portuguese", code: "POR", index: 7 },
+        { name: "French", code: "FRA", index: 8 },
+        { name: "German", code: "DEU", index: 9 },
+        { name: "Arabic", code: "ARA", index: 10 },
+        { name: "Italian", code: "ITA", index: 11 },
+        { name: "Russian", code: "RUS", index: 12 },
+        { name: "Chinese (zho)", code: "ZHO", index: 13 },
+        { name: "Chinese (HK)", code: "ZH-HK", index: 14 },
+        { name: "Thai", code: "THA", index: 15 },
+        { name: "Malay", code: "MAY", index: 16 },
+        { name: "Vietnamese", code: "VIE", index: 17 },
+        { name: "Indonesian", code: "IND", index: 18 },
+        { name: "Polish", code: "POL", index: 19 }
+      ];
+
+      let gridItems = '';
+      COL_LANGS.forEach(lang => {
+        const val = row[lang.index];
+        if (val && val !== "- / -" && val !== "-/-" && val !== "-") {
+          gridItems += `
+            <div class="flex justify-between items-center bg-[#1c1c24] border border-white/5 rounded-xl px-4 py-3">
+              <span class="text-xs text-text-secondary font-bold tracking-wider">${lang.name} (${lang.code})</span>
+              <span class="text-sm text-accent-orange font-extrabold">${val}</span>
+            </div>
+          `;
+        }
+      });
+
+      const notesVal = row[20];
+      const notesHtml = notesVal && notesVal.trim()
+        ? `<div class="bg-accent-orange/10 border border-accent-orange/20 rounded-xl p-4 mt-6 text-sm text-text-primary">
+            <span class="font-bold text-accent-orange uppercase tracking-wider block mb-1">Editor Notes</span>
+            <p class="leading-relaxed font-sans">${notesVal}</p>
+           </div>`
+        : '';
+
+      pipelineHtml = `
+        <div class="mt-8 bg-bg-card border border-white/5 rounded-2xl p-6">
+          <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+            <span class="text-accent-orange">📊</span> Subtitle Pipeline Formatting Details
+          </h3>
+          ${gridItems ? `<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">${gridItems}</div>` : '<p class="text-text-secondary text-sm">No formatting records available for this episode.</p>'}
+          ${notesHtml}
+        </div>
+      `;
+    } else {
+      pipelineHtml = `
+        <div class="mt-8 bg-bg-card border border-white/5 rounded-2xl p-6 text-center py-12">
+          <p class="text-text-secondary text-sm">No spreadsheet formatting details matching this episode's title and number.</p>
+        </div>
+      `;
+    }
+
+    // Get series covers
+    const posterUrl = seriesCovers[ep.seriesId] || '';
+
+    // Watch progress
+    const watchedKey = `cr_watched_${ep.id}`;
+    const watchedVal = localStorage.getItem(watchedKey);
+    const progressPercent = watchedVal ? parseInt(watchedVal, 10) : 0;
+    const progressHtml = progressPercent > 0
+      ? `<div class="w-full bg-white/10 h-1.5 rounded-full overflow-hidden mt-4">
+          <div class="bg-accent-orange h-full" style="width: ${progressPercent}%"></div>
+         </div>`
+      : '';
+
+    detailLoader.classList.add('hidden');
+    detailContent.classList.remove('hidden');
+
+    detailContent.innerHTML = `
+      <div class="bg-bg-card border border-white/5 rounded-2xl overflow-hidden shadow-2xl p-6 sm:p-8">
+        <!-- Breadcrumbs -->
+        <div class="flex items-center gap-2 text-[0.675rem] font-bold uppercase tracking-wider text-text-muted mb-6">
+          <a href="#/" class="hover:text-accent-orange transition-colors">Home</a>
+          <span>/</span>
+          <a href="#/series/${ep.seriesId}" class="hover:text-accent-orange transition-colors">${ep.seriesTitle}</a>
+          <span>/</span>
+          <span class="text-text-secondary">Episode ${ep.episodeNumber}</span>
+        </div>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+          <!-- Left: Images and Watch button -->
+          <div class="w-full lg:w-1/3 flex flex-col gap-4">
+            <div class="relative aspect-video rounded-xl overflow-hidden shadow-lg group bg-[#0b0b0d]">
+              <img src="${ep.thumbnail}" alt="${ep.title}" class="w-full h-full object-cover">
+              ${progressHtml}
+            </div>
+            
+            <a href="https://crunchyroll.com/watch/${ep.id}" target="_blank" class="flex items-center justify-center gap-2 bg-accent-orange hover:bg-accent-orange-hover border-none text-white font-bold text-sm px-6 py-3.5 rounded-xl cursor-pointer w-full text-center transition-colors duration-200 shadow-lg select-none uppercase tracking-wider seen-action-btn" data-watch-id="${ep.id}">
+              Watch Episode on Crunchyroll
+            </a>
+          </div>
+
+          <!-- Right: Details -->
+          <div class="w-full lg:w-2/3 flex flex-col gap-4">
+            <div>
+              <h2 class="text-2xl sm:text-3xl font-extrabold text-text-primary leading-tight">${ep.title || 'Untitled Episode'}</h2>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
+                <span class="text-sm font-bold text-accent-orange uppercase tracking-wider">Episode ${ep.episodeNumber}</span>
+                <span class="text-xs text-text-secondary font-semibold">${new Date(ep.time).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            </div>
+
+            <p class="text-text-secondary text-sm sm:text-base leading-relaxed bg-[#0b0b0d]/50 rounded-xl p-4 border border-white/5">${ep.description || 'No description available for this episode.'}</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-white/5 pt-4">
+              <div>
+                <span class="text-[0.675rem] font-bold uppercase tracking-wider text-text-secondary block mb-1">Audio Language</span>
+                <span class="bg-accent-orange/15 border border-accent-orange/20 text-accent-orange px-2.5 py-1 rounded text-xs font-bold inline-block">${cleanAudio}</span>
+              </div>
+              <div>
+                <span class="text-[0.675rem] font-bold uppercase tracking-wider text-text-secondary block mb-1">Subtitle Tracks</span>
+                <div class="flex flex-wrap gap-1.5">${subBadgesHtml}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Google Sheet Subtitle Pipeline -->
+        ${pipelineHtml}
+      </div>
+    `;
+
+    // Bind Watch Episode Click for Watched Tracking
+    const wBtn = detailContent.querySelector('.seen-action-btn') as HTMLElement | null;
+    if (wBtn) {
+      wBtn.addEventListener('click', () => {
+        handleWatchedToggle(ep.id);
+      });
+    }
+  }
+
+  // Render Series Detail Page
+  async function renderSeriesDetail(seriesId: string, token: string) {
+    const detailLoader = document.getElementById('detail-loader') as HTMLElement;
+    const detailContent = document.getElementById('detail-content') as HTMLElement;
+
+    // Fetch series object
+    const series = await fetchObject(seriesId, token);
+    if (!series) {
+      throw new Error(`Series with ID ${seriesId} not found.`);
+    }
+
+    // Fetch seasons list
+    const seasons = await fetchSeriesSeasons(seriesId, token);
+
+    detailLoader.classList.add('hidden');
+    detailContent.classList.remove('hidden');
+
+    let seasonsHtml = '';
+    if (seasons && seasons.length > 0) {
+      seasons.forEach((season, idx) => {
+        const isFirst = idx === 0;
+        seasonsHtml += `
+          <div class="season-accordion bg-bg-card border border-white/5 rounded-2xl overflow-hidden mb-4" data-season-id="${season.id}">
+            <!-- Accordion Header -->
+            <button class="w-full flex items-center justify-between p-5 text-left bg-white/2 hover:bg-white/5 transition-colors border-none text-text-primary cursor-pointer select-none">
+              <div>
+                <span class="font-extrabold text-base sm:text-lg block">${season.title || 'Untitled Season'}</span>
+                <span class="text-xs text-text-secondary font-semibold uppercase tracking-wider">${season.audio_locale ? (activeLangMap[season.audio_locale] || season.audio_locale) : ''} ${season.episode_count ? `• ${season.episode_count} Episodes` : ''}</span>
+              </div>
+              <svg class="w-5 h-5 text-text-secondary transition-transform duration-200 accordion-arrow ${isFirst ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <!-- Accordion Body -->
+            <div class="accordion-body ${isFirst ? '' : 'hidden border-t border-white/5'} p-5 bg-bg-card/50">
+              ${isFirst 
+                ? `<div class="accordion-episodes-loading flex justify-center py-8">
+                     <div class="animate-spin rounded-full h-8 w-8 border-3 border-t-accent-orange border-white/10"></div>
+                   </div>`
+                : `<div class="text-center py-4">
+                     <button class="load-season-episodes-btn bg-accent-orange/10 hover:bg-accent-orange/20 border border-accent-orange/30 text-accent-orange font-bold text-xs px-5 py-2.5 rounded-lg cursor-pointer transition-all duration-200 select-none uppercase tracking-wider" data-season-id="${season.id}">
+                       Load Season Episodes
+                     </button>
+                   </div>`
+              }
+              <div class="accordion-episodes-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 hidden"></div>
+            </div>
+          </div>
+        `;
+      });
+    } else {
+      seasonsHtml = `<p class="text-text-secondary text-sm p-6 text-center">No seasons found for this series.</p>`;
+    }
+
+    const posterUrl = series.images?.poster_tall?.[0]?.[2]?.source || series.images?.poster_tall?.[0]?.[0]?.source || '';
+
+    detailContent.innerHTML = `
+      <div class="series-detail-header bg-bg-card border border-white/5 rounded-2xl overflow-hidden shadow-2xl p-6 sm:p-8 mb-6 relative">
+        <!-- Backdrop Banner -->
+        ${posterUrl ? `<div class="absolute inset-0 bg-cover bg-center opacity-[0.08] pointer-events-none select-none" style="background-image: url('${posterUrl}')"></div>` : ''}
+        
+        <div class="flex flex-col md:flex-row gap-6 relative z-10">
+          ${posterUrl ? `<img src="${posterUrl}" alt="${series.title}" class="w-32 h-auto rounded-lg border border-white/10 shadow-md self-start">` : ''}
+          <div class="flex flex-col gap-3 justify-center">
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-text-primary leading-tight">${series.title}</h2>
+            <p class="text-text-secondary text-sm max-w-4xl leading-relaxed font-sans">${series.description || 'No description available.'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="seasons-container">
+        <h3 class="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+          <span class="text-accent-orange">🎬</span> Seasons & Episodes
+        </h3>
+        ${seasonsHtml}
+      </div>
+    `;
+
+    // Hook up accordion events
+    const accordions = detailContent.querySelectorAll('.season-accordion');
+    accordions.forEach(acc => {
+      const header = acc.querySelector('button') as HTMLButtonElement;
+      const body = acc.querySelector('.accordion-body') as HTMLElement;
+      const arrow = acc.querySelector('.accordion-arrow') as HTMLElement;
+      const seasonId = acc.getAttribute('data-season-id')!;
+
+      header.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const isHidden = body.classList.contains('hidden');
+        if (isHidden) {
+          body.classList.remove('hidden');
+          body.classList.add('border-t', 'border-white/5');
+          arrow.classList.add('rotate-180');
+          // If first time loading this accordion
+          const loadBtn = body.querySelector('.load-season-episodes-btn') as HTMLButtonElement;
+          if (loadBtn) {
+            await loadAccordionEpisodes(body, seasonId, token);
+          }
+        } else {
+          body.classList.add('hidden');
+          body.classList.remove('border-t', 'border-white/5');
+          arrow.classList.remove('rotate-180');
+        }
+      });
+    });
+
+    // Auto-load first accordion
+    if (seasons && seasons.length > 0) {
+      const firstBody = accordions[0].querySelector('.accordion-body') as HTMLElement;
+      const firstSeasonId = seasons[0].id;
+      await loadAccordionEpisodes(firstBody, firstSeasonId, token);
+    }
+  }
+
+  // Load episodes of a specific accordion season
+  async function loadAccordionEpisodes(body: HTMLElement, seasonId: string, token: string) {
+    const loader = body.querySelector('.accordion-episodes-loading') || body.querySelector('.load-season-episodes-btn');
+    const grid = body.querySelector('.accordion-episodes-grid') as HTMLElement;
+
+    if (loader) {
+      body.innerHTML = `
+        <div class="accordion-episodes-loading flex justify-center py-8">
+          <div class="animate-spin rounded-full h-8 w-8 border-3 border-t-accent-orange border-white/10"></div>
+        </div>
+        <div class="accordion-episodes-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 hidden"></div>
+      `;
+    }
+
+    const finalGrid = body.querySelector('.accordion-episodes-grid') as HTMLElement;
+
+    try {
+      const episodes = await fetchSeasonEpisodes(seasonId, token);
+      if (!episodes || episodes.length === 0) {
+        body.innerHTML = `<p class="text-text-secondary text-sm py-4 text-center">No episodes found in this season.</p>`;
+        return;
+      }
+
+      let html = '';
+      episodes.forEach(ep => {
+        const watchedKey = `cr_watched_${ep.id}`;
+        const watchedVal = localStorage.getItem(watchedKey);
+        const isWatched = watchedVal !== null;
+        
+        const epNum = ep.episode_metadata?.episode_number || '';
+        const seriesTitle = ep.episode_metadata?.series_title || '';
+        const sheetKey = `${normalizeTitleForSheet(seriesTitle)}_${epNum}`;
+        const hasFormats = sheetDataMap.has(sheetKey);
+
+        const thumb = ep.images?.thumbnail?.[0]?.[2]?.source || ep.images?.thumbnail?.[0]?.[0]?.source || '';
+
+        html += `
+          <a href="#/eps/${ep.id}" class="flex flex-col bg-[#16161e] border border-white/5 hover:border-accent-orange/30 rounded-xl overflow-hidden transition-all duration-300 group shadow-md hover:-translate-y-0.5 select-none">
+            <div class="relative aspect-video overflow-hidden bg-[#0b0b0d]">
+              ${thumb ? `<img src="${thumb}" alt="${ep.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">` : `<div class="w-full h-full bg-white/2 flex items-center justify-center"><span class="text-[0.65rem] font-bold text-text-muted">NO THUMBNAIL</span></div>`}
+              ${isWatched ? `<span class="absolute top-2 right-2 bg-accent-orange text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full shadow">WATCHED</span>` : ''}
+              ${hasFormats ? `<span class="absolute bottom-2 left-2 bg-bg-card/90 border border-white/5 text-accent-orange text-[0.6rem] font-extrabold px-2 py-0.5 rounded shadow flex items-center gap-1">📊 FORMATS</span>` : ''}
+            </div>
+            <div class="p-4 flex flex-col gap-1.5 flex-grow justify-between">
+              <div>
+                <span class="text-[0.65rem] font-bold text-accent-orange tracking-wider uppercase">Episode ${epNum || '-'}</span>
+                <h4 class="text-sm font-extrabold text-text-primary line-clamp-1 group-hover:text-accent-orange transition-colors mt-0.5">${ep.title || 'Untitled'}</h4>
+              </div>
+              <span class="text-[0.625rem] text-text-secondary font-medium">Release: ${new Date(ep.episode_metadata?.sequence_number_tnt || Date.now()).toLocaleDateString()}</span>
+            </div>
+          </a>
+        `;
+      });
+
+      const loadingSpinner = body.querySelector('.accordion-episodes-loading') as HTMLElement;
+      if (loadingSpinner) loadingSpinner.classList.add('hidden');
+      finalGrid.innerHTML = html;
+      finalGrid.classList.remove('hidden');
+    } catch (e) {
+      console.error(e);
+      body.innerHTML = `<p class="text-accent-red text-sm py-4 text-center">Failed to load episodes: ${e instanceof Error ? e.message : 'Unknown error'}</p>`;
+    }
+  }
+
+  // Render Season Detail Page
+  async function renderSeasonDetail(seasonId: string, token: string) {
+    const detailLoader = document.getElementById('detail-loader') as HTMLElement;
+    const detailContent = document.getElementById('detail-content') as HTMLElement;
+
+    // Fetch season details
+    const season = await fetchObject(seasonId, token);
+    if (!season) {
+      throw new Error(`Season with ID ${seasonId} not found.`);
+    }
+
+    const episodes = await fetchSeasonEpisodes(seasonId, token);
+
+    detailLoader.classList.add('hidden');
+    detailContent.classList.remove('hidden');
+
+    let episodesHtml = '';
+    if (episodes && episodes.length > 0) {
+      episodes.forEach(ep => {
+        const watchedKey = `cr_watched_${ep.id}`;
+        const watchedVal = localStorage.getItem(watchedKey);
+        const isWatched = watchedVal !== null;
+        
+        const epNum = ep.episode_metadata?.episode_number || '';
+        const seriesTitle = ep.episode_metadata?.series_title || '';
+        const sheetKey = `${normalizeTitleForSheet(seriesTitle)}_${epNum}`;
+        const hasFormats = sheetDataMap.has(sheetKey);
+
+        const thumb = ep.images?.thumbnail?.[0]?.[2]?.source || ep.images?.thumbnail?.[0]?.[0]?.source || '';
+
+        episodesHtml += `
+          <a href="#/eps/${ep.id}" class="flex flex-col bg-[#16161e] border border-white/5 hover:border-accent-orange/30 rounded-xl overflow-hidden transition-all duration-300 group shadow-md hover:-translate-y-0.5 select-none">
+            <div class="relative aspect-video overflow-hidden bg-[#0b0b0d]">
+              ${thumb ? `<img src="${thumb}" alt="${ep.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">` : `<div class="w-full h-full bg-white/2 flex items-center justify-center"><span class="text-[0.65rem] font-bold text-text-muted">NO THUMBNAIL</span></div>`}
+              ${isWatched ? `<span class="absolute top-2 right-2 bg-accent-orange text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full shadow">WATCHED</span>` : ''}
+              ${hasFormats ? `<span class="absolute bottom-2 left-2 bg-bg-card/90 border border-white/5 text-accent-orange text-[0.6rem] font-extrabold px-2 py-0.5 rounded shadow flex items-center gap-1">📊 FORMATS</span>` : ''}
+            </div>
+            <div class="p-4 flex flex-col gap-1.5 flex-grow justify-between">
+              <div>
+                <span class="text-[0.65rem] font-bold text-accent-orange tracking-wider uppercase">Episode ${epNum || '-'}</span>
+                <h4 class="text-sm font-extrabold text-text-primary line-clamp-1 group-hover:text-accent-orange transition-colors mt-0.5">${ep.title || 'Untitled'}</h4>
+              </div>
+              <span class="text-[0.625rem] text-text-secondary font-medium">Release: ${new Date(ep.episode_metadata?.sequence_number_tnt || Date.now()).toLocaleDateString()}</span>
+            </div>
+          </a>
+        `;
+      });
+    } else {
+      episodesHtml = `<div class="col-span-full text-center py-10 bg-bg-card border border-white/5 rounded-xl"><p class="text-text-secondary text-sm">No episodes found in this season.</p></div>`;
+    }
+
+    detailContent.innerHTML = `
+      <div class="bg-bg-card border border-white/5 rounded-2xl p-6 sm:p-8 shadow-2xl">
+        <div class="flex items-center gap-2 text-[0.675rem] font-bold uppercase tracking-wider text-text-muted mb-6">
+          <a href="#/" class="hover:text-accent-orange transition-colors">Home</a>
+          <span>/</span>
+          <a href="#/series/${season.season_metadata?.series_id}" class="hover:text-accent-orange transition-colors">Series Detail</a>
+          <span>/</span>
+          <span class="text-text-secondary">${season.title || 'Season'}</span>
+        </div>
+
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-text-primary leading-tight mb-6">${season.title || 'Season Episodes'}</h2>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          ${episodesHtml}
+        </div>
+      </div>
+    `;
   }
 </script>
