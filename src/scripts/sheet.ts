@@ -4,11 +4,20 @@ export const sheetDataMap = new Map<string, string[]>();
 
 export function normalizeTitleForSheet(title: string): string {
   if (!title) return '';
-  return title.toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents
-    .replace(/season\s*\d+/g, '') // remove "season X"
-    .replace(/\bs\d+\b/g, '') // remove "sX"
-    .replace(/[^a-z0-9]/g, ''); // remove non-alphanumeric characters
+  
+  let cleanTitle = title.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // remove accents
+    
+  let season = 1;
+  const seasonMatch = cleanTitle.match(/(?:season\s*|s)(\d+)\b/);
+  if (seasonMatch) {
+    season = parseInt(seasonMatch[1], 10);
+    // Remove the season designation from the title
+    cleanTitle = cleanTitle.replace(/(?:season\s*|s)\d+\b/g, '');
+  }
+  
+  const base = cleanTitle.replace(/[^a-z0-9]/g, '');
+  return `${base}_s${season}`;
 }
 
 export async function loadSpreadsheetData(): Promise<void> {

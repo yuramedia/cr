@@ -2033,7 +2033,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         const isWatched = watchedVal !== null;
         
         const epNum = ep.episode_number || ep.episode || '';
-        const seriesTitle = ep.series_title || '';
+        let seriesTitle = ep.series_title || '';
+        if (ep.season_title && ep.season_title.startsWith("Season") && !ep.season_title.includes("Season 1")) {
+          seriesTitle += ` ${ep.season_title}`;
+        }
         const sheetKey = `${normalizeTitleForSheet(seriesTitle)}_${epNum}`;
         const hasFormats = sheetDataMap.has(sheetKey);
 
@@ -2094,7 +2097,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         const isWatched = watchedVal !== null;
         
         const epNum = ep.episode_number || ep.episode || '';
-        const seriesTitle = ep.series_title || '';
+        let seriesTitle = ep.series_title || '';
+        if (ep.season_title && ep.season_title.startsWith("Season") && !ep.season_title.includes("Season 1")) {
+          seriesTitle += ` ${ep.season_title}`;
+        }
         const sheetKey = `${normalizeTitleForSheet(seriesTitle)}_${epNum}`;
         const hasFormats = sheetDataMap.has(sheetKey);
 
