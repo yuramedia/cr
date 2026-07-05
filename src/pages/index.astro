@@ -2099,11 +2099,48 @@ import EpisodeCard from '../components/EpisodeCard.astro';
             
             if (matched && matched.url) {
               const badgeLink = document.createElement('a');
-              badgeLink.href = matched.url;
-              badgeLink.target = '_blank';
-              badgeLink.className = 'bg-accent-orange/10 border border-accent-orange/20 text-accent-orange hover:bg-accent-orange/20 hover:text-white px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 select-none';
+              badgeLink.href = 'javascript:void(0)';
+              badgeLink.className = 'bg-accent-orange/10 border border-accent-orange/20 text-accent-orange hover:bg-accent-orange/20 hover:text-white px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 select-none cursor-pointer';
               badgeLink.innerHTML = `${cleanSub} <span class="text-[0.65rem]">📥</span>`;
               badgeLink.title = `Download Subtitle (${matched.format || 'ASS/VTT'})`;
+              
+              badgeLink.addEventListener('click', async (e) => {
+                e.preventDefault();
+                if (badgeLink.classList.contains('pointer-events-none')) return;
+                
+                const originalHtml = badgeLink.innerHTML;
+                badgeLink.innerHTML = `${cleanSub} <span class="text-[0.65rem] animate-spin inline-block">⏳</span>`;
+                badgeLink.classList.add('pointer-events-none', 'opacity-70');
+                
+                try {
+                  const subUrl = getProxyUrl(matched.url);
+                  const subRes = await fetch(subUrl);
+                  if (subRes.ok) {
+                    const text = await subRes.text();
+                    const blob = new Blob([text], { type: 'text/plain' });
+                    const blobUrl = URL.createObjectURL(blob);
+                    
+                    const tempLink = document.createElement('a');
+                    tempLink.href = blobUrl;
+                    const ext = matched.format === 'ass' ? 'ass' : matched.format === 'vtt' ? 'vtt' : 'srt';
+                    tempLink.download = `${episodeId}_${matched.locale || sub}.${ext}`;
+                    
+                    document.body.appendChild(tempLink);
+                    tempLink.click();
+                    document.body.removeChild(tempLink);
+                    URL.revokeObjectURL(blobUrl);
+                  } else {
+                    alert("Gagal mengunduh subtitle. Silakan coba lagi.");
+                  }
+                } catch (err) {
+                  console.error("Subtitle download error:", err);
+                  alert("Gagal mengunduh subtitle karena kesalahan koneksi.");
+                } finally {
+                  badgeLink.innerHTML = originalHtml;
+                  badgeLink.classList.remove('pointer-events-none', 'opacity-70');
+                }
+              });
+
               subContainer.appendChild(badgeLink);
             } else {
               const badge = document.createElement('span');
