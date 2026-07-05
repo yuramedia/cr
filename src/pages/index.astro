@@ -1640,12 +1640,30 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
     const subsContainer = card.querySelector('.val-subs') as HTMLElement;
     if (ep.subtitles && ep.subtitles.length > 0) {
-      ep.subtitles.forEach(sub => {
+      const limit = 12;
+      const showCollapse = ep.subtitles.length > limit;
+
+      ep.subtitles.forEach((sub, idx) => {
         const cleanName = LANG_MAP[sub] || sub;
         const subItem = document.createElement('bidi-item');
         subItem.textContent = cleanName;
+        if (showCollapse && idx >= (limit - 1)) {
+          subItem.classList.add('hidden', 'extra-sub');
+        }
         subsContainer.appendChild(subItem);
       });
+
+      if (showCollapse) {
+        const moreBtn = document.createElement('button');
+        moreBtn.className = 'text-accent-orange font-extrabold cursor-pointer hover:text-white transition-colors duration-200 select-none bg-accent-orange/10 border border-accent-orange/20 px-2 py-0.5 rounded hover:bg-accent-orange/20 text-[0.65rem] uppercase font-sans shrink-0';
+        moreBtn.textContent = `+${ep.subtitles.length - (limit - 1)} more`;
+        moreBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          card.querySelectorAll('.extra-sub').forEach(el => el.classList.remove('hidden'));
+          moreBtn.remove();
+        });
+        subsContainer.appendChild(moreBtn);
+      }
     } else {
       subsContainer.textContent = '-';
     }
