@@ -1917,11 +1917,18 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     }
 
     const posterUrl = series.images?.poster_tall?.[0]?.[2]?.source || series.images?.poster_tall?.[0]?.[0]?.source || '';
+    const widePoster = series.images?.poster_wide?.[0]?.find(p => p.width >= 1200)?.source || series.images?.poster_wide?.[0]?.[0]?.source || '';
+    const backdropUrl = `https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=cover,format=auto,quality=85,width=1920/keyart/${seriesId}-backdrop_wide`;
 
     detailContent.innerHTML = `
       <div class="series-detail-header bg-bg-card border border-white/5 rounded-2xl overflow-hidden shadow-2xl p-6 sm:p-8 mb-6 relative">
         <!-- Backdrop Banner -->
-        ${posterUrl ? `<div class="absolute inset-0 bg-cover bg-center opacity-[0.08] pointer-events-none select-none" style="background-image: url('${posterUrl}')"></div>` : ''}
+        <img 
+          src="${backdropUrl}" 
+          alt="" 
+          class="absolute inset-0 w-full h-full object-cover opacity-20 pointer-events-none select-none z-0" 
+          onerror="this.src='${widePoster || posterUrl}'; this.onerror=null;"
+        />
         
         <div class="flex flex-col md:flex-row gap-6 relative z-10">
           ${posterUrl ? `<img src="${posterUrl}" alt="${series.title}" class="w-32 h-auto rounded-lg border border-white/10 shadow-md self-start">` : ''}
