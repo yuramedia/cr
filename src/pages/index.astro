@@ -1933,7 +1933,14 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         <div class="flex flex-col md:flex-row gap-6 relative z-10">
           ${posterUrl ? `<img src="${posterUrl}" alt="${series.title}" class="w-32 h-auto rounded-lg border border-white/10 shadow-md self-start">` : ''}
           <div class="flex flex-col gap-3 justify-center">
-            <h2 class="text-2xl sm:text-3xl font-extrabold text-text-primary leading-tight">${series.title}</h2>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-text-primary leading-tight">
+              <img 
+                src="https://imgsrv.crunchyroll.com/cdn-cgi/image/fit=contain,format=auto,quality=85,width=480/keyart/${seriesId}-title_logo-en-us" 
+                alt="${series.title}" 
+                class="max-w-[280px] sm:max-w-[360px] h-auto w-auto object-contain block mb-2" 
+                onerror="this.insertAdjacentHTML('afterend', decodeURIComponent('${encodeURIComponent(series.title)}')); this.remove();"
+              />
+            </h2>
             <p class="text-text-secondary text-sm max-w-4xl leading-relaxed font-sans">${series.description || 'No description available.'}</p>
           </div>
         </div>
