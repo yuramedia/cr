@@ -151,7 +151,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     const seenSubs = new Set();
     sortedLangs.forEach(([code, name]) => {
       const subPrefix = code.split('-')[0].toUpperCase();
-      const cleanLangName = name.split(' ')[0];
+      let cleanLangName = name.split(' ')[0];
+      if (cleanLangName === "Bahasa" && name.split(' ').length > 1) {
+        cleanLangName = name;
+      }
 
       if (!seenSubs.has(subPrefix)) {
         seenSubs.add(subPrefix);
