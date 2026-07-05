@@ -8,8 +8,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
 <Layout title="Crunchyroll Tracker">
   <div class="flex flex-col min-h-screen bg-bg-primary text-white">
-    <TrackerHeader />
-    <Filters />
+    <div class="sticky top-0 z-50 flex flex-col w-full shadow-lg">
+      <TrackerHeader />
+      <Filters />
+    </div>
 
     <main class="flex-grow max-w-[1600px] w-full mx-auto px-4 sm:px-6 md:px-8 py-6">
       <!-- Loading State -->
