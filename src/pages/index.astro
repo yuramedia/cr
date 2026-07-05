@@ -179,6 +179,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let currentView = 'feed';
   let pollingInterval = null;
   let useProxyCheckbox: HTMLInputElement | null = null;
+  let customProxyInput: HTMLInputElement | null = null;
 
   // Filter memoization
   let filterCacheKey = '';
@@ -521,6 +522,11 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     if (useProxyCheckbox) {
       useProxyCheckbox.checked = localStorage.getItem('cr_use_cors_proxy') !== 'false';
     }
+    
+    customProxyInput = document.getElementById('custom-proxy-input') as HTMLInputElement;
+    if (customProxyInput) {
+      customProxyInput.value = localStorage.getItem('cr_custom_cors_proxy') || '';
+    }
 
     // Fetch dynamic languages and populate selectors
     await fetchLanguages();
@@ -717,6 +723,20 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     if (useProxyCheckbox) {
       useProxyCheckbox.addEventListener('change', (e: any) => {
         localStorage.setItem('cr_use_cors_proxy', String(e.target.checked));
+        
+        // Clear cache and reload
+        allEpisodes = [];
+        clearCache();
+        
+        fetchLanguages().then(() => {
+          refreshData(true);
+        });
+      });
+    }
+
+    if (customProxyInput) {
+      customProxyInput.addEventListener('change', (e: any) => {
+        localStorage.setItem('cr_custom_cors_proxy', e.target.value.trim());
         
         // Clear cache and reload
         allEpisodes = [];
@@ -2065,7 +2085,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       
       // Attempt 1: Fetch using current proxy preference
       try {
-        const firstUrl = useProxy ? `https://proxy.cors.sh/${targetUrl}` : targetUrl;
+        const firstUrl = getProxyUrl(targetUrl);
         const headers: Record<string, string> = {
           Authorization: `Bearer ${token}`
         };
@@ -2144,7 +2164,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
                   // Try proxy first if proxy is active
                   if (useProxy) {
                     try {
-                      const proxySubUrl = `https://proxy.cors.sh/${matched.url}`;
+                      const proxySubUrl = getProxyUrl(matched.url);
                       subRes = await fetch(proxySubUrl, {
                         headers: {
                           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

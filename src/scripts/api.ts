@@ -3,7 +3,14 @@ import { API_BASE, USER_AGENT } from "./constants";
 export function getProxyUrl(url: string): string {
   if (typeof window === "undefined") return url;
   const useProxy = localStorage.getItem("cr_use_cors_proxy") !== "false";
-  return useProxy ? `https://proxy.cors.sh/${url}` : url;
+  if (!useProxy) return url;
+
+  const customProxy = localStorage.getItem("cr_custom_cors_proxy");
+  if (customProxy && customProxy.trim()) {
+    const cleanProxy = customProxy.trim().endsWith('/') ? customProxy.trim() : `${customProxy.trim()}/`;
+    return `${cleanProxy}${url}`;
+  }
+  return `https://proxy.cors.sh/${url}`;
 }
 
 function getHeaders(accessToken?: string): Record<string, string> {
