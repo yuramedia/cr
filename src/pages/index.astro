@@ -64,62 +64,33 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 </Layout>
 
 <script>
-  // Languages Constants mapping (seeded, updated dynamically)
-  let LANG_MAP = {
-    "en-US": "English",
-    "ja-JP": "Japanese",
-    "id-ID": "Indonesian",
-    "ms-MY": "Malay",
-    "ca-ES": "Catalan",
-    "de-DE": "German",
-    "es-LA": "Spanish (LA)",
-    "es-ES": "Spanish (ES)",
-    "es-419": "Spanish (LA)",
-    "fr-FR": "French",
-    "it-IT": "Italian",
-    "pl-PL": "Polish",
-    "pt-BR": "Portuguese (BR)",
-    "pt-PT": "Portuguese",
-    "vi-VN": "Viêtnamese",
-    "tr-TR": "Turkish",
-    "ru-RU": "Russian",
-    "ar-SA": "Arabic",
-    "hi-IN": "Hindi",
-    "ta-IN": "Tamil",
-    "te-IN": "Telugu",
-    "zh-HK": "Cantonese",
-    "zh-CN": "Mandarin",
-    "zh-TW": "Mandarin (TW)",
-    "ko-KR": "Korean",
-    "th-TH": "Thai",
-    "en-IN": "English (India)"
-  };
+  import { LANG_MAP, CACHE_LIFETIME, CACHE_TIME_KEY, CACHE_KEY, LAST_SEEN_KEY, MAX_CACHED_EPISODES } from "../scripts/constants";
+  import { getProxyUrl, getAccessToken as getAccessTokenApi, fetchCrunchyrollEpisodes, fetchSeriesPoster as fetchSeriesPosterApi, fetchLanguagesConfig } from "../scripts/api";
+  import { loadSpreadsheetData, populatePipelineForCard, updateVisibleCardsPipeline } from "../scripts/sheet";
+  import { loadEpisodesCache, saveEpisodesCache as saveEpisodesCacheToStore, loadCoversCache, saveCoversCache as saveCoversCacheToStore, clearCache } from "../scripts/cache";
+
+  // Active languages configuration mapping (seeded, updated dynamically)
+  let activeLangMap = { ...LANG_MAP };
 
   // Fetch dynamic timed text & audio languages from static.crunchyroll.com
   async function fetchLanguages() {
     try {
-      const timedTextUrl = getProxyUrl("https://static.crunchyroll.com/config/i18n/v3/timed_text_languages.json");
-      const audioUrl = getProxyUrl("https://static.crunchyroll.com/config/i18n/v3/audio_languages.json");
+      const config = await fetchLanguagesConfig();
+      if (!config) return;
 
-      const [timedTextRes, audioRes] = await Promise.all([
-        fetch(timedTextUrl).then(res => (res.ok ? res.json() : null)).catch(() => null),
-        fetch(audioUrl).then(res => (res.ok ? res.json() : null)).catch(() => null)
-      ]);
-
-      const merged = { ...LANG_MAP };
-
-      if (timedTextRes && typeof timedTextRes === "object") {
-        for (const [code, name] of Object.entries(timedTextRes)) {
+      const merged = { ...activeLangMap };
+      if (config.timedText && typeof config.timedText === "object") {
+        for (const [code, name] of Object.entries(config.timedText)) {
           if (typeof name === "string") merged[code] = name;
         }
       }
-      if (audioRes && typeof audioRes === "object") {
-        for (const [code, name] of Object.entries(audioRes)) {
+      if (config.audio && typeof config.audio === "object") {
+        for (const [code, name] of Object.entries(config.audio)) {
           if (typeof name === "string") merged[code] = name;
         }
       }
 
-      LANG_MAP = merged;
+      activeLangMap = merged;
     } catch (err) {
       console.warn("Failed to fetch static languages configs:", err);
     } finally {
@@ -137,7 +108,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     audioFilter.innerHTML = '<option value="all">All Audio</option>';
     subFilter.innerHTML = '<option value="all">All Subtitles</option>';
 
-    const sortedLangs = Object.entries(LANG_MAP).sort((a, b) => a[1].localeCompare(b[1]));
+    const sortedLangs = Object.entries(activeLangMap).sort((a, b) => a[1].localeCompare(b[1]));
 
     // Populate Audio Filter
     sortedLangs.forEach(([code, name]) => {
@@ -185,140 +156,6 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let pollingInterval = null;
   let useProxyCheckbox: HTMLInputElement | null = null;
 
-  // Dynamic CORS proxy resolver
-  function getProxyUrl(url) {
-    const useProxy = localStorage.getItem('cr_use_cors_proxy') !== 'false';
-    return useProxy ? `https://proxy.cors.sh/${url}` : url;
-  }
-
-  // Spreadsheet integration state
-  let sheetDataMap = new Map();
-
-  function normalizeTitleForSheet(title) {
-    if (!title) return '';
-    return title.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents
-      .replace(/season\s*\d+/g, '') // remove "season X"
-      .replace(/\bs\d+\b/g, '') // remove "sX"
-      .replace(/[^a-z0-9]/g, ''); // remove non-alphanumeric characters
-  }
-
-  async function loadSpreadsheetData() {
-    try {
-      const spreadsheetId = "1YSXp5jxPE4LMAyaPH5sl9xXbZiSjnD_zRRZbZ26Rk44";
-      const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=tsv`;
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const tsv = await res.text();
-      const lines = tsv.split('\n');
-      
-      sheetDataMap.clear();
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split('\t').map(p => p.trim());
-        if (parts.length < 2) continue;
-        const seriesName = parts[0];
-        const epNum = parts[1];
-        if (!seriesName || !epNum) continue;
-        
-        const key = `${normalizeTitleForSheet(seriesName)}_${epNum}`;
-        sheetDataMap.set(key, parts);
-      }
-      console.log(`Loaded ${sheetDataMap.size} subtitle pipeline mappings.`);
-      
-      // Update any cards that are already rendered
-      updateVisibleCardsPipeline();
-    } catch (e) {
-      console.error("Error loading spreadsheet:", e);
-    }
-  }
-
-  function populatePipelineForCard(card, seriesTitle, episodeNumber) {
-    if (!card) return;
-    const container = card.querySelector('.sub-pipeline-container') as HTMLElement;
-    if (!container) return;
-
-    const key = `${normalizeTitleForSheet(seriesTitle)}_${episodeNumber}`;
-    const row = sheetDataMap.get(key);
-
-    if (!row) {
-      container.classList.add('hidden');
-      return;
-    }
-
-    container.classList.remove('hidden');
-
-    const grid = container.querySelector('.pipeline-grid') as HTMLElement;
-    const notes = container.querySelector('.pipeline-notes') as HTMLElement;
-    const toggleBtn = container.querySelector('.toggle-pipeline-btn') as HTMLElement;
-    const details = container.querySelector('.pipeline-details') as HTMLElement;
-    const arrow = container.querySelector('.pipeline-arrow') as HTMLElement;
-
-    if (!toggleBtn.getAttribute('data-bound')) {
-      toggleBtn.setAttribute('data-bound', 'true');
-      toggleBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isHidden = details.classList.contains('hidden');
-        if (isHidden) {
-          details.classList.remove('hidden');
-          arrow.classList.add('rotate-180');
-        } else {
-          details.classList.add('hidden');
-          arrow.classList.remove('rotate-180');
-        }
-      });
-    }
-
-    const COL_LANGS = [
-      { name: "English", code: "ENG", index: 4 },
-      { name: "Spanish (LA)", code: "SPA-LA", index: 5 },
-      { name: "Spanish (ES)", code: "SPA-ES", index: 6 },
-      { name: "Portuguese", code: "POR", index: 7 },
-      { name: "French", code: "FRA", index: 8 },
-      { name: "German", code: "DEU", index: 9 },
-      { name: "Arabic", code: "ARA", index: 10 },
-      { name: "Italian", code: "ITA", index: 11 },
-      { name: "Russian", code: "RUS", index: 12 },
-      { name: "Chinese (zho)", code: "ZHO", index: 13 },
-      { name: "Chinese (HK)", code: "ZH-HK", index: 14 },
-      { name: "Thai", code: "THA", index: 15 },
-      { name: "Malay", code: "MAY", index: 16 },
-      { name: "Vietnamese", code: "VIE", index: 17 },
-      { name: "Indonesian", code: "IND", index: 18 },
-      { name: "Polish", code: "POL", index: 19 }
-    ];
-
-    let html = '';
-    COL_LANGS.forEach(lang => {
-      const val = row[lang.index];
-      if (val && val !== "- / -" && val !== "-/-" && val !== "-") {
-        html += `<div class="flex justify-between items-center text-[0.625rem] bg-white/3 border border-white/5 rounded px-2 py-1">
-          <span class="text-text-muted font-bold">${lang.code}</span>
-          <span class="text-accent-orange font-semibold">${val}</span>
-        </div>`;
-      }
-    });
-    grid.innerHTML = html;
-
-    const notesVal = row[20];
-    if (notesVal && notesVal.trim()) {
-      notes.innerHTML = `<span class="font-bold text-accent-orange">Notes:</span> ${notesVal}`;
-      notes.classList.remove('hidden');
-    } else {
-      notes.classList.add('hidden');
-    }
-  }
-
-  function updateVisibleCardsPipeline() {
-    const cards = document.querySelectorAll('.episode-card');
-    cards.forEach(card => {
-      const seriesTitle = card.getAttribute('data-series-title');
-      const epNum = card.getAttribute('data-episode-number');
-      if (seriesTitle && epNum) {
-        populatePipelineForCard(card as HTMLElement, seriesTitle, epNum);
-      }
-    });
-  }
-
   // Filter memoization
   let filterCacheKey = '';
   let filteredCache = null;
@@ -329,50 +166,14 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   const renderedEpisodeIds = new Set();
 
   // Covers Cache State
-  const COVERS_CACHE_KEY = "cr_series_covers_cache_v3";
-  let seriesCovers = {};
+  let seriesCovers = loadCoversCache();
 
   // Poster fetch queue (dedupe + concurrency limit)
   const posterInflight = new Map();
   const posterQueue = [];
   let posterActiveCount = 0;
   const POSTER_CONCURRENCY = 4;
-
-  // Constants
-  const API_BASE = "https://beta-api.crunchyroll.com";
-  const BASIC_AUTH = "cmpzMGx0eDBkYndrbGl3eGR6ZGY6NFY3cmYyMS1VRlhlWi01WEFkMFhfUVB3cjFndV9pMXM=";
-  const USER_AGENT = "Crunchyroll/ANDROIDTV/3.65.0_22347 (Android 12; en-US; SHIELD Android TV Build/SR1A.211012.001)";
-  const MAX_CACHED_EPISODES = 300;
   const PLACEHOLDER_IMG = '';
-  
-  // Storage Keys
-  const CACHE_KEY = 'cr_episodes_cache';
-  const CACHE_TIME_KEY = 'cr_episodes_cache_time';
-  const LAST_SEEN_KEY = 'cr_last_seen_episode';
-
-  // Covers Cache Helpers
-  function loadCoversCache() {
-    try {
-      const cached = localStorage.getItem(COVERS_CACHE_KEY);
-      if (cached) {
-        seriesCovers = JSON.parse(cached);
-      }
-    } catch (e) {
-      console.error("Failed to load covers cache:", e);
-    }
-  }
-
-  function saveCoversCache() {
-    try {
-      const entries = Object.entries(seriesCovers);
-      if (entries.length > 500) {
-        seriesCovers = Object.fromEntries(entries.slice(-400));
-      }
-      localStorage.setItem(COVERS_CACHE_KEY, JSON.stringify(seriesCovers));
-    } catch (e) {
-      console.error("Failed to save covers cache:", e);
-    }
-  }
 
   function invalidateFilterCache() {
     filterCacheKey = '';
@@ -423,43 +224,15 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   }
 
   function saveEpisodesCache() {
-    try {
-      const toStore = allEpisodes.slice(0, MAX_CACHED_EPISODES);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(toStore));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) {
-      console.error("Failed to save episodes cache:", e);
-    }
+    saveEpisodesCacheToStore(allEpisodes);
   }
 
   async function fetchSeriesPoster(seriesId, accessToken) {
-    const targetUrl = `${API_BASE}/content/v2/cms/series/${seriesId}`;
-    const proxyUrl = getProxyUrl(targetUrl);
-
-    const response = await fetch(proxyUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": USER_AGENT
-      }
-    });
-
-    if (!response.ok) return null;
-    const json = await response.json();
-    if (json.data && json.data.length > 0) {
-      const series = json.data[0];
-      if (series.images && series.images.poster_tall) {
-        const posters = series.images.poster_tall.flat();
-        if (posters.length > 0) {
-          const sorted = posters.toSorted((a, b) => b.width * b.height - a.width * a.height);
-          const optimal = sorted.find(p => p.width >= 240 && p.width <= 480) || sorted[sorted.length - 1];
-          const posterUrl = optimal.source;
-
-          seriesCovers[seriesId] = posterUrl;
-          saveCoversCache();
-          return posterUrl;
-        }
-      }
+    const posterUrl = await fetchSeriesPosterApi(seriesId, accessToken);
+    if (posterUrl) {
+      seriesCovers[seriesId] = posterUrl;
+      saveCoversCacheToStore(seriesCovers);
+      return posterUrl;
     }
     return null;
   }
@@ -586,7 +359,6 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
     setupEventListeners();
     setupFeedDelegation();
-    loadCoversCache();
     loadCachedData();
     loadSpreadsheetData();
     setupInfiniteScroll();
@@ -729,8 +501,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         
         // Clear cache and reload
         allEpisodes = [];
-        localStorage.removeItem(CACHE_KEY);
-        localStorage.removeItem(CACHE_TIME_KEY);
+        clearCache();
         
         fetchLanguages().then(() => {
           refreshData(true);
@@ -806,9 +577,9 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   // Access Token management helper
   async function getAccessToken() {
     if (currentAccessToken) return currentAccessToken;
-    const tokenData = await fetchAnonymousToken();
-    if (tokenData && tokenData.access_token) {
-      currentAccessToken = tokenData.access_token;
+    const token = await getAccessTokenApi();
+    if (token) {
+      currentAccessToken = token;
       return currentAccessToken;
     }
     return null;
@@ -977,56 +748,6 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       const timeStr = date.toTimeString().split(' ')[0];
       lastUpdateTimeSpan.textContent = timeStr;
     }
-  }
-
-  // Token authentication
-  async function fetchAnonymousToken() {
-    const body = new URLSearchParams();
-    body.append("grant_type", "client_id");
-    body.append("device_id", crypto.randomUUID());
-
-    const targetUrl = `${API_BASE}/auth/v1/token`;
-    const proxyUrl = getProxyUrl(targetUrl);
-
-    const response = await fetch(proxyUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${BASIC_AUTH}`,
-        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-        "User-Agent": USER_AGENT
-      },
-      body: body.toString()
-    });
-
-    if (!response.ok) return null;
-    return await response.json();
-  }
-
-  // Fetch episodes with pagination support
-  async function fetchCrunchyrollEpisodes(accessToken, start = 0) {
-    const params = new URLSearchParams({
-      start: String(start),
-      n: "60",
-      type: "episode",
-      sort_by: "newly_added",
-      force_locale: crypto.randomUUID()
-    });
-
-    const targetUrl = `${API_BASE}/content/v2/discover/browse?${params}`;
-    const proxyUrl = getProxyUrl(targetUrl);
-
-    const response = await fetch(proxyUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": USER_AGENT,
-        "Cache-Control": "no-cache"
-      }
-    });
-
-    if (!response.ok) return null;
-    const json = await response.json();
-    return json.data || [];
   }
 
   // RSS fetch deleted
