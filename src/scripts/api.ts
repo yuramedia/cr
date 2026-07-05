@@ -179,3 +179,28 @@ export async function fetchSeasonEpisodes(seasonId: string, accessToken: string)
     return null;
   }
 }
+
+export async function searchSeries(query: string, accessToken: string): Promise<any[] | null> {
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      n: "10",
+      type: "series"
+    });
+    const targetUrl = `${API_BASE}/content/v2/discover/search?${params}`;
+    const proxyUrl = getProxyUrl(targetUrl);
+    const response = await fetch(proxyUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": USER_AGENT
+      }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.data?.[0]?.items || [];
+  } catch (e) {
+    console.error(`Failed to search series for query ${query}:`, e);
+    return null;
+  }
+}

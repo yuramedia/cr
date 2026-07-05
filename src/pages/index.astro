@@ -87,7 +87,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
 <script>
   import { LANG_MAP, CACHE_LIFETIME, CACHE_TIME_KEY, CACHE_KEY, LAST_SEEN_KEY, MAX_CACHED_EPISODES } from "../scripts/constants";
-  import { getProxyUrl, getAccessToken as getAccessTokenApi, fetchCrunchyrollEpisodes, fetchSeriesPoster as fetchSeriesPosterApi, fetchLanguagesConfig, fetchObject, fetchSeriesSeasons, fetchSeasonEpisodes } from "../scripts/api";
+  import { getProxyUrl, getAccessToken as getAccessTokenApi, fetchCrunchyrollEpisodes, fetchSeriesPoster as fetchSeriesPosterApi, fetchLanguagesConfig, fetchObject, fetchSeriesSeasons, fetchSeasonEpisodes, searchSeries } from "../scripts/api";
   import { loadSpreadsheetData, populatePipelineForCard, updateVisibleCardsPipeline, sheetDataMap, normalizeTitleForSheet } from "../scripts/sheet";
   import { loadEpisodesCache, saveEpisodesCache as saveEpisodesCacheToStore, loadCoversCache, saveCoversCache as saveCoversCacheToStore, clearCache } from "../scripts/cache";
 
@@ -352,6 +352,8 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   let audioFilter: HTMLSelectElement | null = null;
   let subFilter: HTMLSelectElement | null = null;
   let resetFiltersBtn: HTMLElement | null = null;
+  let searchSuggestions: HTMLElement | null = null;
+  let suggestionsTimeout: any = null;
   
   let loadingState: HTMLElement | null = null;
   let errorState: HTMLElement | null = null;
@@ -392,6 +394,94 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     }, 60 * 1000); // 1 minute in ms
   }
 
+  function renderSuggestions(items) {
+    if (!searchSuggestions) return;
+    searchSuggestions.innerHTML = '';
+    
+    if (!items || items.length === 0) {
+      const emptyItem = document.createElement('div');
+      emptyItem.className = 'p-4 text-text-muted text-xs text-center font-medium';
+      emptyItem.textContent = 'No anime series found';
+      searchSuggestions.appendChild(emptyItem);
+      searchSuggestions.classList.remove('hidden');
+      return;
+    }
+    
+    const header = document.createElement('div');
+    header.className = 'px-3 pt-3 pb-1 text-[0.65rem] font-bold text-text-secondary uppercase tracking-wider select-none';
+    header.textContent = 'Anime';
+    searchSuggestions.appendChild(header);
+    
+    items.forEach(item => {
+      let thumbUrl = '';
+      const images = item.images?.poster_tall?.[0];
+      if (images && images.length > 0) {
+        let best = images[0];
+        for (const img of images) {
+          if (img.width >= 120 && img.width <= 240) {
+            best = img;
+            break;
+          }
+        }
+        thumbUrl = best.source;
+      }
+      
+      const normalizedTitle = normalizeTitleForSheet(item.title);
+      let inDb = allEpisodes.some(e => e.seriesId === item.id);
+      if (!inDb) {
+        for (const key of sheetDataMap.keys()) {
+          if (key.startsWith(normalizedTitle)) {
+            inDb = true;
+            break;
+          }
+        }
+      }
+      
+      const itemEl = document.createElement('div');
+      itemEl.className = 'flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer transition-colors select-none';
+      itemEl.setAttribute('data-series-id', item.id);
+      
+      const imgHtml = thumbUrl 
+        ? `<img src="${thumbUrl}" class="w-10 aspect-[2/3] object-cover rounded bg-[#0b0b0d] border border-white/10 shrink-0" loading="lazy" />`
+        : `<div class="w-10 aspect-[2/3] bg-[#0b0b0d] border border-white/10 rounded flex items-center justify-center shrink-0"><span class="text-[0.6rem] text-text-muted">No Cover</span></div>`;
+      
+      const badgeHtml = inDb 
+        ? `<span class="bg-emerald-500/15 border border-emerald-500/25 text-emerald-500 px-1.5 py-0.2 rounded text-[0.55rem] font-black uppercase tracking-wider select-none">IN DB</span>` 
+        : '';
+        
+      const yearHtml = item.series_metadata?.series_launch_year 
+        ? `<span class="text-[0.65rem] font-semibold text-text-muted select-none">${item.series_metadata.series_launch_year}</span>` 
+        : '';
+      
+      itemEl.innerHTML = `
+        ${imgHtml}
+        <div class="min-w-0 flex-grow">
+          <div class="text-white text-xs sm:text-sm font-bold truncate">${item.title}</div>
+          <div class="flex items-center gap-2 mt-0.5">
+            ${yearHtml}
+            ${badgeHtml}
+          </div>
+        </div>
+      `;
+      
+      itemEl.addEventListener('click', () => {
+        window.location.hash = `#/series/${item.id}`;
+        if (searchInput) searchInput.value = '';
+        if (searchClearBtn) searchClearBtn.style.display = 'none';
+        searchSuggestions.innerHTML = '';
+        searchSuggestions.classList.add('hidden');
+        
+        currentFilters.search = '';
+        invalidateFilterCache();
+        renderFeed();
+      });
+      
+      searchSuggestions.appendChild(itemEl);
+    });
+    
+    searchSuggestions.classList.remove('hidden');
+  }
+
   // Initialization
   document.addEventListener('DOMContentLoaded', () => {
     initApp();
@@ -409,6 +499,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     audioFilter = document.getElementById('audio-filter') as HTMLSelectElement;
     subFilter = document.getElementById('sub-filter') as HTMLSelectElement;
     resetFiltersBtn = document.getElementById('reset-filters-btn');
+    searchSuggestions = document.getElementById('search-suggestions');
     
     loadingState = document.getElementById('loading-state');
     errorState = document.getElementById('error-state');
@@ -522,6 +613,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     }
 
     // Filter controls
+    // Filter controls and search suggestions
     if (searchInput) {
       searchInput.addEventListener('input', (e: any) => {
         const val = e.target.value;
@@ -529,12 +621,38 @@ import EpisodeCard from '../components/EpisodeCard.astro';
           searchClearBtn.style.display = val.trim() ? 'block' : 'none';
         }
         
+        // Trigger suggestions fetch
+        if (suggestionsTimeout) clearTimeout(suggestionsTimeout);
+        suggestionsTimeout = setTimeout(async () => {
+          const query = val.trim();
+          if (query.length < 2) {
+            if (searchSuggestions) {
+              searchSuggestions.innerHTML = '';
+              searchSuggestions.classList.add('hidden');
+            }
+            return;
+          }
+          
+          const token = await getAccessToken();
+          if (!token) return;
+          
+          const items = await searchSeries(query, token);
+          renderSuggestions(items);
+        }, 250);
+
         if (searchTimeout) clearTimeout(searchTimeout);
         searchTimeout = setTimeout(() => {
           currentFilters.search = val.toLowerCase().trim();
           invalidateFilterCache();
           renderFeed();
         }, 150);
+      });
+
+      searchInput.addEventListener('focus', () => {
+        const val = searchInput.value;
+        if (val.trim().length >= 2 && searchSuggestions && searchSuggestions.children.length > 0) {
+          searchSuggestions.classList.remove('hidden');
+        }
       });
     }
 
@@ -543,10 +661,20 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         searchInput.value = '';
         currentFilters.search = '';
         searchClearBtn.style.display = 'none';
+        if (searchSuggestions) {
+          searchSuggestions.innerHTML = '';
+          searchSuggestions.classList.add('hidden');
+        }
         invalidateFilterCache();
         renderFeed();
       });
     }
+
+    document.addEventListener('click', (e: any) => {
+      if (searchSuggestions && !searchSuggestions.contains(e.target) && e.target !== searchInput) {
+        searchSuggestions.classList.add('hidden');
+      }
+    });
 
     if (viewSelector) {
       viewSelector.addEventListener('change', (e: any) => {
@@ -1760,6 +1888,8 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       }
       ep = formatEpisode(rawEp);
     }
+
+
 
     // 3. Render HTML
     const cleanAudio = ep.audioLocale ? (activeLangMap[ep.audioLocale] || ep.audioLocale) : '-';
