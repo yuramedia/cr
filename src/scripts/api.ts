@@ -6,6 +6,22 @@ export function getProxyUrl(url: string): string {
   return useProxy ? `https://proxy.cors.sh/${url}` : url;
 }
 
+function getHeaders(accessToken?: string): Record<string, string> {
+  const useProxy = typeof window !== "undefined" && localStorage.getItem("cr_use_cors_proxy") !== "false";
+  const headers: Record<string, string> = {};
+  
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+  
+  if (useProxy) {
+    headers["User-Agent"] = USER_AGENT;
+    headers["x-cors-grants"] = '{"x-cors-button": "allowed"}';
+  }
+  
+  return headers;
+}
+
 export async function getAccessToken(): Promise<string | null> {
   try {
     const body = new URLSearchParams();
@@ -16,13 +32,12 @@ export async function getAccessToken(): Promise<string | null> {
     const targetUrl = `${API_BASE}/auth/v1/token`;
     const proxyUrl = getProxyUrl(targetUrl);
 
+    const headers = getHeaders();
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
+
     const response = await fetch(proxyUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": USER_AGENT,
-        "x-cors-grants": '{"x-cors-button": "allowed"}'
-      },
+      headers: headers,
       body: body
     });
 
@@ -48,13 +63,15 @@ export async function fetchCrunchyrollEpisodes(accessToken: string, start = 0): 
     const targetUrl = `${API_BASE}/content/v2/discover/browse?${params}`;
     const proxyUrl = getProxyUrl(targetUrl);
 
+    const headers = getHeaders(accessToken);
+    const useProxy = typeof window !== "undefined" && localStorage.getItem("cr_use_cors_proxy") !== "false";
+    if (useProxy) {
+      headers["Cache-Control"] = "no-cache";
+    }
+
     const response = await fetch(proxyUrl, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": USER_AGENT,
-        "Cache-Control": "no-cache"
-      }
+      headers: headers
     });
 
     if (!response.ok) return null;
@@ -73,10 +90,7 @@ export async function fetchSeriesPoster(seriesId: string, accessToken: string): 
 
     const response = await fetch(proxyUrl, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": USER_AGENT
-      }
+      headers: getHeaders(accessToken)
     });
 
     if (!response.ok) return null;
@@ -87,7 +101,6 @@ export async function fetchSeriesPoster(seriesId: string, accessToken: string): 
     const images = series.images?.poster_tall?.[0];
     if (!images || images.length === 0) return null;
 
-    // Filter optimal medium resolution series poster (width 240 to 480)
     let bestImg = images[0];
     for (const img of images) {
       if (img.width >= 240 && img.width <= 480) {
@@ -126,10 +139,7 @@ export async function fetchObject(id: string, accessToken: string): Promise<any 
     const proxyUrl = getProxyUrl(targetUrl);
     const response = await fetch(proxyUrl, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": USER_AGENT
-      }
+      headers: getHeaders(accessToken)
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -146,10 +156,7 @@ export async function fetchSeriesSeasons(seriesId: string, accessToken: string):
     const proxyUrl = getProxyUrl(targetUrl);
     const response = await fetch(proxyUrl, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": USER_AGENT
-      }
+      headers: getHeaders(accessToken)
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -166,10 +173,7 @@ export async function fetchSeasonEpisodes(seasonId: string, accessToken: string)
     const proxyUrl = getProxyUrl(targetUrl);
     const response = await fetch(proxyUrl, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": USER_AGENT
-      }
+      headers: getHeaders(accessToken)
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -191,10 +195,7 @@ export async function searchSeries(query: string, accessToken: string): Promise<
     const proxyUrl = getProxyUrl(targetUrl);
     const response = await fetch(proxyUrl, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": USER_AGENT
-      }
+      headers: getHeaders(accessToken)
     });
     if (!response.ok) return null;
     const data = await response.json();

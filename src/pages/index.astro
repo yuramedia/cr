@@ -843,7 +843,12 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
       const token = await getAccessToken();
       if (!token) {
-        throw new Error("Could not acquire Crunchyroll token.");
+        const useProxy = localStorage.getItem("cr_use_cors_proxy") !== "false";
+        if (!useProxy) {
+          throw new Error("Could not acquire Crunchyroll token. Since CORS Proxy is disabled, please ensure your browser CORS extension is active and configured for Crunchyroll.");
+        } else {
+          throw new Error("Could not acquire Crunchyroll token. Please check your internet connection or CORS proxy status.");
+        }
       }
 
       // Fetch Latest Episodes (Page 1 - offset 0)
