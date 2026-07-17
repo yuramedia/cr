@@ -1,28 +1,34 @@
 ---
 // src/pages/404.astro
-import Layout from '../layouts/Layout.astro';
+// This page acts as SPA fallback for client-side routing
+// When a user visits /eps/123 directly, GitHub Pages serves 404.html
+// We redirect to / with the path preserved in sessionStorage
 ---
 
-<Layout title="Redirecting... - Crunchyroll Tracker">
-  <div class="flex flex-col items-center justify-center min-h-screen bg-[#0b0b0d] text-white p-6">
-    <div class="border-3 border-white/5 border-t-[#ff6200] rounded-full w-12 h-12 animate-spin mb-6"></div>
-    <p class="text-[#a0a0ab] text-lg font-medium">Loading page...</p>
-  </div>
-
-  <script is:inline>
-    const path = window.location.pathname;
-    // Strip trailing slashes and split
-    const parts = path.split('/').filter(Boolean);
-    if (parts.length >= 2) {
-      const type = parts[0];
-      const id = parts[1];
-      if (type === 'eps' || type === 'series' || type === 'season') {
-        window.location.replace('/#/' + type + '/' + id);
-      } else {
-        window.location.replace('/');
-      }
-    } else {
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Redirecting... - Crunchyroll Tracker</title>
+    <script is:inline>
+      // SPA Fallback: Save the attempted path and redirect to index
+      const path = window.location.pathname;
+      // Store the path so the app can restore it
+      sessionStorage.setItem('cr_spa_redirect_path', path);
+      // Redirect to home page
       window.location.replace('/');
-    }
-  </script>
-</Layout>
+    </script>
+  </head>
+  <body style="background: #0a0a0c; color: #f8f9fa; font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0;">
+    <div style="text-align: center;">
+      <div style="border: 3px solid rgba(255,255,255,0.05); border-top-color: #ff6200; border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; margin: 0 auto 24px;"></div>
+      <p style="color: #a0a0ab;">Redirecting...</p>
+    </div>
+    <style>
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </body>
+</html>

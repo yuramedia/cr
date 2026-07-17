@@ -1,170 +1,170 @@
 @import "tailwindcss";
 
 @theme {
-  /* Font Override */
-  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    /* Font Override */
+    --font-sans: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
-  /* Custom Theme Colors */
-  --color-bg-primary: #0a0a0c;
-  --color-bg-card: #131317;
-  --color-bg-card-hover: #1b1b22;
-  --color-border-card: rgba(255, 255, 255, 0.05);
+    /* Custom Theme Colors */
+    --color-bg-primary: #0a0a0c;
+    --color-bg-card: #131317;
+    --color-bg-card-hover: #1b1b22;
+    --color-border-card: rgba(255, 255, 255, 0.05);
 
-  --color-accent-orange: #f47521;
-  --color-accent-orange-hover: #ff8e42;
+    --color-accent-orange: #f47521;
+    --color-accent-orange-hover: #ff8e42;
 
-  --color-accent-blue: #0084ff;
-  --color-accent-blue-glow: rgba(0, 132, 255, 0.25);
-  --color-accent-blue-hover: #339cff;
+    --color-accent-blue: #0084ff;
+    --color-accent-blue-glow: rgba(0, 132, 255, 0.25);
+    --color-accent-blue-hover: #339cff;
 
-  --color-text-secondary: #8e8e9e;
-  --color-text-muted: #5c5c6d;
+    --color-text-secondary: #8e8e9e;
+    --color-text-muted: #5c5c6d;
 }
 
 body {
-  background-color: var(--color-bg-primary);
-  color: #f8f9fa;
-  font-family: var(--font-sans);
+    background-color: var(--color-bg-primary);
+    color: #f8f9fa;
+    font-family: var(--font-sans);
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+    width: 10px;
+    height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-bg-primary);
+    background: var(--color-bg-primary);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #25252d;
-  border-radius: 5px;
-  border: 2px solid var(--color-bg-primary);
+    background: #25252d;
+    border-radius: 5px;
+    border: 2px solid var(--color-bg-primary);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #353540;
+    background: #353540;
 }
 
 /* Watched Visual State Overrides */
 .episode-card.watched {
-  border-color: var(--color-accent-blue) !important;
-  box-shadow: 0 0 20px rgba(0, 132, 255, 0.25) !important;
+    border-color: var(--color-accent-blue) !important;
+    box-shadow: 0 0 20px rgba(0, 132, 255, 0.25) !important;
 }
 
 .episode-card.watched .seen-action-btn {
-  background-color: var(--color-accent-blue) !important;
-  border-color: var(--color-accent-blue) !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(0, 132, 255, 0.2) !important;
+    background-color: var(--color-accent-blue) !important;
+    border-color: var(--color-accent-blue) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(0, 132, 255, 0.2) !important;
 }
 
 .episode-card.watched .seen-action-btn:hover {
-  background-color: var(--color-accent-blue-hover) !important;
-  border-color: var(--color-accent-blue-hover) !important;
+    background-color: var(--color-accent-blue-hover) !important;
+    border-color: var(--color-accent-blue-hover) !important;
 }
 
 /* Custom classes for micro-animations and bidi-isolates */
 .glowing-button {
-  position: relative;
-  overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .glowing-button::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 120%;
-  height: 0;
-  background: rgba(255, 255, 255, 0.1);
-  opacity: 0;
-  transform: translate(-50%, -50%) rotate(45deg);
-  transition: all 0.6s ease;
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 120%;
+    height: 0;
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(45deg);
+    transition: all 0.6s ease;
 }
 
 .glowing-button:hover::after {
-  height: 300%;
-  opacity: 1;
+    height: 300%;
+    opacity: 1;
 }
 
 .copied-toast {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-accent-orange);
-  color: #f8f9fa;
-  padding: 0.8rem 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-  z-index: 9999;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  transform: translateY(100px);
-  opacity: 0;
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-accent-orange);
+    color: #f8f9fa;
+    padding: 0.8rem 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    z-index: 9999;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .copied-toast.show {
-  transform: translateY(0);
-  opacity: 1;
+    transform: translateY(0);
+    opacity: 1;
 }
 
 bidi-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
 }
 
 bidi-item {
-  display: inline-block;
-  unicode-bidi: isolate;
-  background: #1c1c24;
-  color: var(--color-text-secondary);
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
-  font-size: 0.65rem;
-  font-weight: 600;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+    display: inline-block;
+    unicode-bidi: isolate;
+    background: #1c1c24;
+    color: var(--color-text-secondary);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
 }
 
 .shimmer-bg {
-  background: linear-gradient(90deg, #131317 25%, #22222b 50%, #131317 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite linear;
+    background: linear-gradient(90deg, #131317 25%, #22222b 50%, #131317 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite linear;
 }
 
 /* Explicit cross-browser line clamping */
 .episode-title {
-  display: -webkit-box !important;
-  -webkit-line-clamp: 2 !important;
-  -webkit-box-orient: vertical !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 
 .episode-description {
-  display: -webkit-box !important;
-  -webkit-line-clamp: 3 !important;
-  -webkit-box-orient: vertical !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 3 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 
 /* Off-screen cards skip layout/paint until near viewport */
@@ -173,12 +173,12 @@ bidi-item {
 .compact-row,
 .series-card,
 .schedule-col {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 320px;
 }
 
 .img-placeholder {
-  background: linear-gradient(90deg, #131317 25%, #22222b 50%, #131317 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite linear;
+    background: linear-gradient(90deg, #131317 25%, #22222b 50%, #131317 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite linear;
 }

@@ -88,6 +88,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 </Layout>
 
 <script>
+  // @ts-nocheck - Legacy code with implicit any types, functional as-is
   import { LANG_MAP, CACHE_LIFETIME, CACHE_TIME_KEY, CACHE_KEY, LAST_SEEN_KEY, MAX_CACHED_EPISODES } from "../scripts/constants";
   import { getProxyUrl, getAccessToken as getAccessTokenApi, fetchCrunchyrollEpisodes, fetchSeriesPoster as fetchSeriesPosterApi, fetchLanguagesConfig, fetchObject, fetchSeriesSeasons, fetchSeasonEpisodes, searchSeries } from "../scripts/api";
   import { loadSpreadsheetData, populatePipelineForCard, updateVisibleCardsPipeline, sheetDataMap, normalizeTitleForSheet } from "../scripts/sheet";
@@ -468,15 +469,15 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       `;
       
       itemEl.addEventListener('click', () => {
-        window.location.hash = `#/series/${item.id}`;
+        window.history.pushState({}, '', `/series/${item.id}`);
         if (searchInput) searchInput.value = '';
         if (searchClearBtn) searchClearBtn.style.display = 'none';
         searchSuggestions.innerHTML = '';
         searchSuggestions.classList.add('hidden');
-        
+
         currentFilters.search = '';
         invalidateFilterCache();
-        renderFeed();
+        handleRoute();
       });
       
       searchSuggestions.appendChild(itemEl);
@@ -491,6 +492,16 @@ import EpisodeCard from '../components/EpisodeCard.astro';
   });
 
   async function initApp() {
+    // Handle SPA redirect from 404.html
+    // When user visits /eps/123 directly, GitHub Pages serves 404.html
+    // which redirects to / with path stored in sessionStorage
+    const redirectPath = sessionStorage.getItem('cr_spa_redirect_path');
+    if (redirectPath) {
+      sessionStorage.removeItem('cr_spa_redirect_path');
+      // Replace current history entry with the intended path
+      window.history.replaceState({}, '', redirectPath);
+    }
+
     // Initialize DOM Elements after DOMContentLoaded
     headerFiltersBtn = document.getElementById('toggle-filters-btn');
     filtersPanel = document.getElementById('filters-panel');
@@ -567,13 +578,35 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     });
 
     // Routing listeners
-    window.addEventListener('hashchange', handleRoute);
-    
+    // Handle popstate for back/forward navigation (normal paths)
+    window.addEventListener('popstate', handleRoute);
+
+    // Global link click delegation for SPA navigation
+    // Intercept all internal link clicks and use History API instead of full page navigation
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const link = target.closest('a[href^="/"]') as HTMLAnchorElement;
+
+      // Only intercept internal links (starting with /)
+      if (link && !link.hasAttribute('target') && !e.ctrlKey && !e.metaKey) {
+        const href = link.getAttribute('href');
+        // Skip external links, anchors, and downloads
+        if (href && href.startsWith('/') && !href.startsWith('//')) {
+          e.preventDefault();
+          window.history.pushState({}, '', href);
+          handleRoute();
+          // Scroll to top on navigation
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
+    });
+
     // Bind detail page back button
     const detailBackBtn = document.getElementById('detail-back-btn');
     if (detailBackBtn) {
       detailBackBtn.addEventListener('click', () => {
-        window.location.hash = '#/';
+        window.history.pushState({}, '', '/');
+        handleRoute();
       });
     }
 
@@ -1253,7 +1286,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     img.decoding = 'async';
     
     const imgLink = document.createElement('a');
-    imgLink.href = `#/eps/${ep.id}`;
+    imgLink.href = `/eps/${ep.id}`;
     imgLink.className = 'shrink-0';
     imgLink.appendChild(img);
     row.appendChild(imgLink);
@@ -1264,7 +1297,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     const seriesTitle = document.createElement('div');
     seriesTitle.className = 'text-accent-orange text-[0.65rem] font-bold uppercase truncate';
     const seriesLink = document.createElement('a');
-    seriesLink.href = `#/series/${ep.seriesId}`;
+    seriesLink.href = `/series/${ep.seriesId}`;
     seriesLink.className = 'hover:text-accent-orange-hover hover:underline transition-colors';
     seriesLink.textContent = ep.seriesTitle;
     seriesTitle.appendChild(seriesLink);
@@ -1273,7 +1306,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     const epTitle = document.createElement('div');
     epTitle.className = 'text-white text-xs sm:text-sm font-semibold truncate';
     const epLink = document.createElement('a');
-    epLink.href = `#/eps/${ep.id}`;
+    epLink.href = `/eps/${ep.id}`;
     epLink.className = 'hover:text-accent-orange-hover transition-colors';
     epLink.textContent = ep.title;
     epTitle.appendChild(epLink);
@@ -1395,7 +1428,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       }
       
       const imgLink = document.createElement('a');
-      imgLink.href = `#/series/${group.seriesId}`;
+      imgLink.href = `/series/${group.seriesId}`;
       imgLink.className = 'shrink-0';
       imgLink.appendChild(img);
       topSection.appendChild(imgLink);
@@ -1406,7 +1439,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       const sTitle = document.createElement('h3');
       sTitle.className = 'text-white text-sm sm:text-base font-bold truncate';
       const sLink = document.createElement('a');
-      sLink.href = `#/series/${group.seriesId}`;
+      sLink.href = `/series/${group.seriesId}`;
       sLink.className = 'hover:text-accent-orange-hover hover:underline transition-colors';
       sLink.textContent = group.seriesTitle;
       sTitle.appendChild(sLink);
@@ -1433,7 +1466,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         const epNumStr = document.createElement('span');
         epNumStr.className = 'text-accent-orange font-bold mr-1.5';
         const epLink = document.createElement('a');
-        epLink.href = `#/eps/${ep.id}`;
+        epLink.href = `/eps/${ep.id}`;
         epLink.className = 'hover:text-accent-orange-hover hover:underline transition-colors';
         epLink.textContent = `EP ${ep.episodeNumber}`;
         epNumStr.appendChild(epLink);
@@ -1546,7 +1579,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
             img.decoding = 'async';
             
             const thumbLink = document.createElement('a');
-            thumbLink.href = `#/series/${show.eps[0].seriesId}`;
+            thumbLink.href = `/series/${show.eps[0].seriesId}`;
             thumbLink.appendChild(img);
             thumbWrapper.appendChild(thumbLink);
             item.appendChild(thumbWrapper);
@@ -1560,7 +1593,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
           const title = document.createElement('div');
           title.className = 'text-white font-semibold truncate';
           const titleLink = document.createElement('a');
-          titleLink.href = `#/series/${show.eps[0].seriesId}`;
+          titleLink.href = `/series/${show.eps[0].seriesId}`;
           titleLink.className = 'hover:text-accent-orange-hover hover:underline transition-colors';
           titleLink.textContent = show.seriesTitle;
           title.appendChild(titleLink);
@@ -1571,7 +1604,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
           show.eps.forEach(ep => {
             const shortLang = ep.audioLocale ? ep.audioLocale.split('-')[0].toUpperCase() : 'RAW';
             const badge = document.createElement('a');
-            badge.href = `#/eps/${ep.id}`;
+            badge.href = `/eps/${ep.id}`;
             badge.className = 'text-[0.55rem] font-bold bg-white/5 border border-white/10 px-1 py-0.2 rounded hover:bg-accent-orange/10 hover:border-accent-orange/30 text-text-secondary hover:text-accent-orange transition-colors';
             badge.textContent = shortLang;
             item.setAttribute('data-episode-id', ep.id);
@@ -1612,7 +1645,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     const imgContainer = img.parentElement as HTMLElement;
     if (imgContainer) {
       const link = document.createElement('a');
-      link.href = `#/eps/${ep.id}`;
+      link.href = `/eps/${ep.id}`;
       link.className = 'block w-full h-full';
       img.parentNode?.insertBefore(link, img);
       link.appendChild(img);
@@ -1624,10 +1657,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     }
 
     const seriesTitleEl = card.querySelector('.series-title') as HTMLElement;
-    seriesTitleEl.innerHTML = `<a href="#/series/${ep.seriesId}" class="hover:text-accent-orange-hover hover:underline transition-colors">${ep.seriesTitle}</a>`;
+    seriesTitleEl.innerHTML = `<a href="/series/${ep.seriesId}" class="hover:text-accent-orange-hover hover:underline transition-colors">${ep.seriesTitle}</a>`;
     
     const epTitle = card.querySelector('.episode-title') as HTMLElement;
-    epTitle.innerHTML = `<a href="#/eps/${ep.id}" class="hover:text-accent-orange-hover transition-colors">${ep.title}</a>`;
+    epTitle.innerHTML = `<a href="/eps/${ep.id}" class="hover:text-accent-orange-hover transition-colors">${ep.title}</a>`;
     epTitle.title = ep.title;
 
     const desc = card.querySelector('.episode-description') as HTMLElement;
@@ -1786,11 +1819,11 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 
   // Routing Handler
   async function handleRoute() {
-    const hash = window.location.hash;
+    const pathname = window.location.pathname;
     const detailContainer = document.getElementById('detail-container') as HTMLElement;
     const detailLoader = document.getElementById('detail-loader') as HTMLElement;
     const detailContent = document.getElementById('detail-content') as HTMLElement;
-    
+
     const episodesContainer = document.getElementById('episodes-container') as HTMLElement;
     const infiniteScrollSentinel = document.getElementById('infinite-scroll-sentinel') as HTMLElement;
     const filtersPanel = document.getElementById('filters-panel') as HTMLElement;
@@ -1801,7 +1834,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     const errorState = document.getElementById('error-state') as HTMLElement;
     const emptyState = document.getElementById('empty-state') as HTMLElement;
 
-    if (!hash || hash === '#/' || hash === '') {
+    if (!pathname || pathname === '/' || pathname === '') {
       // Main Feed Route
       if (detailContainer) detailContainer.classList.add('hidden');
       if (episodesContainer) episodesContainer.classList.remove('hidden');
@@ -1856,10 +1889,10 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       return;
     }
 
-    // Parse route
-    const seriesMatch = hash.match(/^#\/series\/([a-zA-Z0-9]+)$/);
-    const seasonMatch = hash.match(/^#\/season\/([a-zA-Z0-9]+)$/);
-    const episodeMatch = hash.match(/^#\/eps\/([a-zA-Z0-9]+)$/) || hash.match(/^#\/episode\/([a-zA-Z0-9]+)$/);
+    // Parse route using pathname (normal paths)
+    const seriesMatch = pathname.match(/^\/series\/([a-zA-Z0-9]+)$/);
+    const seasonMatch = pathname.match(/^\/season\/([a-zA-Z0-9]+)$/);
+    const episodeMatch = pathname.match(/^\/eps\/([a-zA-Z0-9]+)$/) || pathname.match(/^\/episode\/([a-zA-Z0-9]+)$/);
 
     try {
       if (seriesMatch) {
@@ -2012,9 +2045,9 @@ import EpisodeCard from '../components/EpisodeCard.astro';
       <div class="bg-bg-card border border-white/5 rounded-2xl overflow-hidden shadow-2xl p-6 sm:p-8">
         <!-- Breadcrumbs -->
         <div class="flex items-center gap-2 text-[0.675rem] font-bold uppercase tracking-wider text-text-muted mb-6">
-          <a href="#/" class="hover:text-accent-orange transition-colors">Home</a>
+          <a href="/" class="hover:text-accent-orange transition-colors">Home</a>
           <span>/</span>
-          <a href="#/series/${ep.seriesId}" class="hover:text-accent-orange transition-colors">${ep.seriesTitle}</a>
+          <a href="/series/${ep.seriesId}" class="hover:text-accent-orange transition-colors">${ep.seriesTitle}</a>
           <span>/</span>
           <span class="text-text-secondary">Episode ${ep.episodeNumber}</span>
         </div>
@@ -2409,7 +2442,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         const releaseDateStr = releaseDate ? new Date(releaseDate).toLocaleDateString() : '-';
 
         html += `
-          <a href="#/eps/${ep.id}" class="flex flex-col bg-[#16161e] border border-white/5 hover:border-accent-orange/30 rounded-xl overflow-hidden transition-all duration-300 group shadow-md hover:-translate-y-0.5 select-none">
+          <a href="/eps/${ep.id}" class="flex flex-col bg-[#16161e] border border-white/5 hover:border-accent-orange/30 rounded-xl overflow-hidden transition-all duration-300 group shadow-md hover:-translate-y-0.5 select-none">
             <div class="relative aspect-video overflow-hidden bg-[#0b0b0d]">
               ${thumb ? `<img src="${thumb}" alt="${ep.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">` : `<div class="w-full h-full bg-white/2 flex items-center justify-center"><span class="text-[0.65rem] font-bold text-text-muted">NO THUMBNAIL</span></div>`}
               ${isWatched ? `<span class="absolute top-2 right-2 bg-accent-orange text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full shadow">WATCHED</span>` : ''}
@@ -2473,7 +2506,7 @@ import EpisodeCard from '../components/EpisodeCard.astro';
         const releaseDateStr = releaseDate ? new Date(releaseDate).toLocaleDateString() : '-';
 
         episodesHtml += `
-          <a href="#/eps/${ep.id}" class="flex flex-col bg-[#16161e] border border-white/5 hover:border-accent-orange/30 rounded-xl overflow-hidden transition-all duration-300 group shadow-md hover:-translate-y-0.5 select-none">
+          <a href="/eps/${ep.id}" class="flex flex-col bg-[#16161e] border border-white/5 hover:border-accent-orange/30 rounded-xl overflow-hidden transition-all duration-300 group shadow-md hover:-translate-y-0.5 select-none">
             <div class="relative aspect-video overflow-hidden bg-[#0b0b0d]">
               ${thumb ? `<img src="${thumb}" alt="${ep.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">` : `<div class="w-full h-full bg-white/2 flex items-center justify-center"><span class="text-[0.65rem] font-bold text-text-muted">NO THUMBNAIL</span></div>`}
               ${isWatched ? `<span class="absolute top-2 right-2 bg-accent-orange text-white text-[0.6rem] font-bold px-2 py-0.5 rounded-full shadow">WATCHED</span>` : ''}
@@ -2496,9 +2529,9 @@ import EpisodeCard from '../components/EpisodeCard.astro';
     detailContent.innerHTML = `
       <div class="bg-bg-card border border-white/5 rounded-2xl p-6 sm:p-8 shadow-2xl">
         <div class="flex items-center gap-2 text-[0.675rem] font-bold uppercase tracking-wider text-text-muted mb-6">
-          <a href="#/" class="hover:text-accent-orange transition-colors">Home</a>
+          <a href="/" class="hover:text-accent-orange transition-colors">Home</a>
           <span>/</span>
-          <a href="#/series/${season.season_metadata?.series_id}" class="hover:text-accent-orange transition-colors">Series Detail</a>
+          <a href="/series/${season.season_metadata?.series_id}" class="hover:text-accent-orange transition-colors">Series Detail</a>
           <span>/</span>
           <span class="text-text-secondary">${season.title || 'Season'}</span>
         </div>

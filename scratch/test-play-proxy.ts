@@ -1,40 +1,41 @@
-import { getAccessToken } from "../src/scripts/api";
+import { getAccessToken } from "../src/scripts/api"
 
-const API_BASE = "https://beta-api.crunchyroll.com";
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const API_BASE = "https://beta-api.crunchyroll.com"
+const USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 function getProxyUrl(url) {
-  return `https://proxy.cors.sh/${url}`;
+    return `https://proxy.cors.sh/${url}`
 }
 
 function getHeaders(accessToken) {
-  const headers = {};
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
-  }
-  headers["User-Agent"] = USER_AGENT;
-  headers["x-cors-grants"] = '{"x-cors-button": "allowed"}';
-  return headers;
+    const headers = {}
+    if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`
+    }
+    headers["User-Agent"] = USER_AGENT
+    headers["x-cors-grants"] = '{"x-cors-button": "allowed"}'
+    return headers
 }
 
 async function run() {
-  const token = await getAccessToken();
-  if (!token) return;
+    const token = await getAccessToken()
+    if (!token) return
 
-  const contentId = "GE00378240ENUS";
-  const url = getProxyUrl(`${API_BASE}/playback/v2/${contentId}/web/chrome/play`);
-  
-  const res = await fetch(url, {
-    headers: getHeaders(token)
-  });
-  console.log("STATUS WITH PROXY HEADERS:", res.status, res.statusText);
-  if (res.ok) {
-    const data = await res.json();
-    console.log("SUCCESS! SUBTITLES KEYS:", Object.keys(data.subtitles || {}));
-  } else {
-    const text = await res.text();
-    console.log("ERROR TEXT:", text);
-  }
+    const contentId = "GE00378240ENUS"
+    const url = getProxyUrl(`${API_BASE}/playback/v2/${contentId}/web/chrome/play`)
+
+    const res = await fetch(url, {
+        headers: getHeaders(token)
+    })
+    console.log("STATUS WITH PROXY HEADERS:", res.status, res.statusText)
+    if (res.ok) {
+        const data = await res.json()
+        console.log("SUCCESS! SUBTITLES KEYS:", Object.keys(data.subtitles || {}))
+    } else {
+        const text = await res.text()
+        console.log("ERROR TEXT:", text)
+    }
 }
 
-run();
+run()
